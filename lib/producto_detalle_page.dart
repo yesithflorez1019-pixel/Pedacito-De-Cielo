@@ -298,7 +298,7 @@ class _ProductoDetallePageState extends State<ProductoDetallePage> {
                   ),
                 ),
               );
-            }).toList(),
+            }),
           ],
         ),
         Positioned(
@@ -550,7 +550,7 @@ void _verFactura(FacturaFoto factura) {
 
 class InsumoSearchSheet extends StatefulWidget {
   final List<Insumo> todosLosInsumos;
-  const InsumoSearchSheet({Key? key, required this.todosLosInsumos}) : super(key: key);
+  const InsumoSearchSheet({super.key, required this.todosLosInsumos});
 
   @override
   State<InsumoSearchSheet> createState() => _InsumoSearchSheetState();

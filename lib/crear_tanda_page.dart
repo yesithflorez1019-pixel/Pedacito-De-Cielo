@@ -97,39 +97,50 @@ class _CrearTandaPageState extends State<CrearTandaPage> {
     _productosSeleccionados[productoId] = stock;
   }
 
-  Future<void> _guardarTanda() async {
-    if (!_formKey.currentState!.validate()) return;
-    
-    final nombreTanda = _nombreTandaCtrl.text.trim();
-    if (nombreTanda.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Por favor, ingresa un nombre para la tanda.')));
-      return;
-    }
-    
-    final productosAGuardar = Map.of(_productosSeleccionados)
-        ..removeWhere((key, value) => value <= 0);
+Future<void> _guardarTanda() async {
+  if (!_formKey.currentState!.validate()) return;
 
-    if (productosAGuardar.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Añade al menos un producto con stock.')));
-      return;
-    }
-
-
-    if (widget.tandaExistente == null) {
-      final nuevaTanda = Tanda(nombre: nombreTanda);
-      final tandaId = await AppDatabase.insertarTanda(nuevaTanda);
-      await AppDatabase.addProductosToTanda(tandaId, productosAGuardar);
-    } else {
-      final tandaId = widget.tandaExistente!.id!;
-      final tandaActualizada = Tanda(id: tandaId, nombre: nombreTanda);
-      await AppDatabase.actualizarTanda(tandaActualizada);
-      await AppDatabase.actualizarProductosDeTanda(tandaId, productosAGuardar);
-    }
-
-    if (mounted) Navigator.pop(context, true);
+  final nombreTanda = _nombreTandaCtrl.text.trim();
+  if (nombreTanda.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor, ingresa un nombre para la tanda.')));
+    return;
   }
+
+  final esNombreDiferente = widget.tandaExistente == null || widget.tandaExistente!.nombre.toLowerCase() != nombreTanda.toLowerCase();
+
+  if (esNombreDiferente) {
+    final bool yaExiste = await AppDatabase.existeTandaConNombre(nombreTanda);
+    if (yaExiste) {
+      if (!mounted) return;
+     
+      _mostrarAlertaDuplicado(); 
+      return; 
+    }
+  }
+
+  final productosAGuardar = Map.of(_productosSeleccionados)
+      ..removeWhere((key, value) => value <= 0);
+
+  if (productosAGuardar.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Añade al menos un producto con stock.')));
+    return;
+  }
+
+  if (widget.tandaExistente == null) {
+    final nuevaTanda = Tanda(nombre: nombreTanda);
+    final tandaId = await AppDatabase.insertarTanda(nuevaTanda);
+    await AppDatabase.addProductosToTanda(tandaId, productosAGuardar);
+  } else {
+    final tandaId = widget.tandaExistente!.id!;
+    final tandaActualizada = Tanda(id: tandaId, nombre: nombreTanda);
+    await AppDatabase.actualizarTanda(tandaActualizada);
+    await AppDatabase.actualizarProductosDeTanda(tandaId, productosAGuardar);
+  }
+
+  if (mounted) Navigator.pop(context, true);
+}
 
   @override
   Widget build(BuildContext context) {
@@ -297,6 +308,47 @@ class _CrearTandaPageState extends State<CrearTandaPage> {
       child: Text(title, style: TextStyle(fontSize: 16, color: kColorTextDark.withOpacity(0.8))),
     );
   }
+
+void _mostrarAlertaDuplicado() {
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        backgroundColor: const Color(0xFFFCF2F2), // Un fondo rosado muy suave
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.pink.shade100, width: 2),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.pink.shade300, size: 28),
+            const SizedBox(width: 10),
+            const Text('Nombre Repetido', style: TextStyle(color: kColorPrimary)),
+          ],
+        ),
+        content: const Text(
+          'Ya existe una tanda con este nombre. Por favor, elige uno diferente.',
+          style: TextStyle(color: kColorTextDark),
+        ),
+        actions: <Widget>[
+          TextButton(
+            style: TextButton.styleFrom(
+              backgroundColor: kColorPrimary.withOpacity(0.1),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Entendido', style: TextStyle(color: kColorPrimary, fontWeight: FontWeight.bold)),
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+          ),
+        ],
+      );
+    },
+  );
+}
+
 }
 
 

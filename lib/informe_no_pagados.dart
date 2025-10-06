@@ -1,13 +1,14 @@
-import 'widgets/acrylic_card.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'database.dart';
+import 'pedido.dart';
+import 'producto.dart';
 import 'registrar_pedido.dart';
-import 'dart:ui';
 import 'util/app_colors.dart';
-import 'package:postres_app/pedido.dart';
+import 'widgets/acrylic_card.dart';
 
-
+// Enum para manejar los tipos de filtro y ordenamiento
+enum DeudorSortOrder { porDeuda, porAntiguedad }
 
 class InformeNoPagadosPage extends StatefulWidget {
   const InformeNoPagadosPage({super.key});
@@ -17,61 +18,169 @@ class InformeNoPagadosPage extends StatefulWidget {
 }
 
 class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
-  List<Map<String, dynamic>> clientes = [];
-  List<Map<String, dynamic>> clientesFiltrados = [];
+  // Estado para la lista de clientes completa y la filtrada
+  List<Map<String, dynamic>> _clientesCompletos = [];
+  List<Map<String, dynamic>> _clientesFiltrados = [];
   double _deudaTotalGeneral = 0.0;
-  final searchController = TextEditingController();
+
+  // Controladores y estado para los filtros
+  final _searchController = TextEditingController();
+  DeudorSortOrder _sortOrder = DeudorSortOrder.porDeuda;
+  Producto? _productoSeleccionado;
+  DateTime? _fechaInicio;
+  DateTime? _fechaFin;
+  List<Producto> _listaDeProductos = [];
+  bool _isLoading = true;
 
   final formatoPesos = NumberFormat.currency(
     locale: 'es_CO',
     symbol: '\$',
     decimalDigits: 0,
   );
+  
+  // Formato para mostrar las fechas en la UI
+  final formatoFecha = DateFormat('dd MMM, yyyy', 'es_CO');
 
   @override
   void initState() {
     super.initState();
-    searchController.addListener(_filtrarClientes);
-    _cargarClientes();
+    _searchController.addListener(_aplicarFiltros);
+    _cargarDatosIniciales();
   }
 
   @override
   void dispose() {
-    searchController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
+  /// Carga tanto los productos (para el dropdown) como los clientes deudores.
+  Future<void> _cargarDatosIniciales() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    final productos = await AppDatabase.obtenerTodosLosProductos();
+    if (mounted) {
+      setState(() {
+        _listaDeProductos = productos;
+      });
+    }
+
+    await _cargarClientes();
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  /// Carga y procesa la información de todos los clientes con deudas.
   Future<void> _cargarClientes() async {
-    final data = await AppDatabase.obtenerClientesDeudores();
-    double deudaGeneral = 0;
+    final todosLosPedidosNoPagados = await AppDatabase.obtenerPedidos()
+      ..retainWhere((p) => !p.pagado && p.totalPendiente > 0);
 
-    final clientesConDeuda = <Map<String, dynamic>>[];
-    for (var clienteNombre in data) {
-      final pedidos = await AppDatabase.obtenerPedidosNoPagadosPorCliente(clienteNombre);
-      final deudaCliente = pedidos.fold<double>(0.0, (sum, p) => sum + p.totalPendiente);
+    final Map<String, dynamic> clientesMap = {};
 
-      if (deudaCliente > 0) {
-        clientesConDeuda.add({'cliente': clienteNombre, 'deuda': deudaCliente});
-        deudaGeneral += deudaCliente;
+    for (final pedido in todosLosPedidosNoPagados) {
+      final clienteNombre = pedido.cliente;
+      if (!clientesMap.containsKey(clienteNombre)) {
+        clientesMap[clienteNombre] = {
+          'cliente': clienteNombre,
+          'deuda': 0.0,
+          'pedidos': <Pedido>[],
+          'fechaMasAntigua': pedido.fecha,
+        };
+      }
+      clientesMap[clienteNombre]['deuda'] += pedido.totalPendiente;
+      clientesMap[clienteNombre]['pedidos'].add(pedido);
+      if (pedido.fecha.isBefore(clientesMap[clienteNombre]['fechaMasAntigua'])) {
+        clientesMap[clienteNombre]['fechaMasAntigua'] = pedido.fecha;
       }
     }
 
     if (!mounted) return;
     setState(() {
-      clientes = clientesConDeuda..sort((a, b) => (b['deuda'] as double).compareTo(a['deuda']));
-      clientesFiltrados = List.from(clientes);
-      _deudaTotalGeneral = deudaGeneral;
+      _clientesCompletos = List<Map<String, dynamic>>.from(clientesMap.values);
+      _deudaTotalGeneral = _clientesCompletos.fold(0.0, (sum, c) => sum + c['deuda']);
+      _aplicarFiltros();
     });
   }
 
-  void _filtrarClientes() {
-    final query = searchController.text.toLowerCase();
+  /// Aplica todos los filtros en cascada: fecha, producto, texto y ordenamiento.
+  void _aplicarFiltros() {
+    List<Map<String, dynamic>> resultado = List.from(_clientesCompletos);
+
+    // 1. Filtro por RANGO DE FECHAS
+    if (_fechaInicio != null && _fechaFin != null) {
+      resultado = resultado.where((cliente) {
+        final pedidos = cliente['pedidos'] as List<Pedido>;
+        return pedidos.any((pedido) {
+          final fechaPedido = pedido.fecha;
+          // Normalizar fechas para comparar solo el día, sin la hora
+          final fechaInicioDia = DateTime(_fechaInicio!.year, _fechaInicio!.month, _fechaInicio!.day);
+          final fechaFinDia = DateTime(_fechaFin!.year, _fechaFin!.month, _fechaFin!.day, 23, 59, 59);
+          return !fechaPedido.isBefore(fechaInicioDia) && !fechaPedido.isAfter(fechaFinDia);
+        });
+      }).toList();
+    }
+    
+    // 2. Filtro por producto seleccionado
+    if (_productoSeleccionado != null) {
+      final productoId = _productoSeleccionado!.id;
+      resultado = resultado.where((cliente) {
+        final pedidos = cliente['pedidos'] as List<Pedido>;
+        return pedidos.any((pedido) =>
+            pedido.detalles.any((detalle) => detalle.producto.id == productoId));
+      }).toList();
+    }
+
+    // 3. Filtro por texto de búsqueda
+    final query = _searchController.text.toLowerCase();
+    if (query.isNotEmpty) {
+      resultado = resultado
+          .where((c) => (c['cliente'] as String).toLowerCase().contains(query))
+          .toList();
+    }
+
+    // 4. Ordenamiento
+    switch (_sortOrder) {
+      case DeudorSortOrder.porDeuda:
+        resultado.sort((a, b) => (b['deuda'] as double).compareTo(a['deuda']));
+        break;
+      case DeudorSortOrder.porAntiguedad:
+        resultado.sort((a, b) =>
+            (a['fechaMasAntigua'] as DateTime).compareTo(b['fechaMasAntigua']));
+        break;
+    }
+
+    if (!mounted) return;
     setState(() {
-      clientesFiltrados =
-          clientes.where((c) => (c['cliente'] as String).toLowerCase().contains(query)).toList();
+      _clientesFiltrados = resultado;
     });
   }
+  
+  /// Muestra el selector de fechas.
+  Future<void> _seleccionarFecha(BuildContext context, {required bool esFechaInicio}) async {
+    final DateTime? fechaSeleccionada = await showDatePicker(
+      context: context,
+      initialDate: esFechaInicio ? (_fechaInicio ?? DateTime.now()) : (_fechaFin ?? DateTime.now()),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
 
+    if (fechaSeleccionada != null) {
+      setState(() {
+        if (esFechaInicio) {
+          _fechaInicio = fechaSeleccionada;
+          // Si no hay fecha de fin, se pone la misma que la de inicio
+          _fechaFin ??= fechaSeleccionada;
+        } else {
+          _fechaFin = fechaSeleccionada;
+        }
+      });
+      _aplicarFiltros();
+    }
+  }
+  
   Future<void> _liquidarCliente(String cliente) async {
     final confirmado = await showDialog<bool>(
       context: context,
@@ -99,26 +208,6 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _obtenerPedidosCliente(String cliente) async {
-    final pedidos = await AppDatabase.obtenerPedidosNoPagadosPorCliente(cliente);
-    return Future.wait(pedidos.map((p) async {
-      String nombreTanda = '';
-      if (p.tandaId != 0) {
-        final tanda = await AppDatabase.obtenerTandasConConteo();
-        final match = tanda.firstWhere((t) => t['id'] == p.tandaId, orElse: () => {'nombre': 'Desconocida'});
-        nombreTanda = match['nombre'] as String;
-      }
-      return {
-        'objetoPedido': p,
-        'tandaId': p.tandaId,
-        'tanda': nombreTanda,
-        'pendiente': p.totalPendiente,
-        'detalles': p.detalles
-            .map((d) => {'producto': d.producto.nombre, 'cantidad': d.cantidad, 'subtotal': d.subtotal})
-            .toList(),
-      };
-    }).toList());
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -134,22 +223,25 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
         child: Column(
           children: [
             _buildHeader(),
+            _buildFiltrosUI(),
             _buildResumenGeneral(),
             Expanded(
-              child: clientesFiltrados.isEmpty
-                  ? _buildEmptyState()
-                  : RefreshIndicator(
-                      onRefresh: _cargarClientes,
-                      color: kColorPrimary,
-                      child: ListView.builder(
-                        padding: const EdgeInsets.only(top: 8, bottom: 20),
-                        itemCount: clientesFiltrados.length,
-                        itemBuilder: (context, i) {
-                          final clienteData = clientesFiltrados[i];
-                          return _buildClienteCard(clienteData);
-                        },
-                      ),
-                    ),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: kColorPrimary))
+                  : _clientesFiltrados.isEmpty
+                      ? _buildEmptyState()
+                      : RefreshIndicator(
+                          onRefresh: _cargarClientes,
+                          color: kColorPrimary,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.only(top: 8, bottom: 20),
+                            itemCount: _clientesFiltrados.length,
+                            itemBuilder: (context, i) {
+                              final clienteData = _clientesFiltrados[i];
+                              return _buildClienteCard(clienteData);
+                            },
+                          ),
+                        ),
             ),
           ],
         ),
@@ -188,7 +280,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.refresh, color: Colors.white),
-                  onPressed: _cargarClientes,
+                  onPressed: _cargarDatosIniciales,
                 ),
               ],
             ),
@@ -196,7 +288,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: TextField(
-              controller: searchController,
+              controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Buscar cliente...',
                 hintStyle: TextStyle(color: kColorTextDark.withOpacity(0.5)),
@@ -217,21 +309,163 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
     );
   }
 
+  /// Widget que contiene todos los filtros
+  Widget _buildFiltrosUI() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+           // --- NUEVO FILTRO DE FECHA ---
+          const Text("Filtrar por fecha de pedido:", style: TextStyle(fontWeight: FontWeight.bold, color: kColorTextDark)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _seleccionarFecha(context, esFechaInicio: true),
+                  icon: const Icon(Icons.calendar_today, size: 16),
+                  label: Text(_fechaInicio != null ? formatoFecha.format(_fechaInicio!) : "Desde"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white.withOpacity(0.7), foregroundColor: kColorTextDark,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _seleccionarFecha(context, esFechaInicio: false),
+                  icon: const Icon(Icons.calendar_today, size: 16),
+                  label: Text(_fechaFin != null ? formatoFecha.format(_fechaFin!) : "Hasta"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white.withOpacity(0.7), foregroundColor: kColorTextDark,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                  ),
+                ),
+              ),
+              if (_fechaInicio != null || _fechaFin != null)
+                IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.redAccent),
+                  onPressed: () {
+                    setState(() {
+                      _fechaInicio = null;
+                      _fechaFin = null;
+                    });
+                    _aplicarFiltros();
+                  },
+                  tooltip: "Limpiar filtro de fecha",
+                ),
+            ],
+          ),
+          const Divider(height: 24),
+          // --- FILTROS ANTERIORES ---
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Ordenar por:", style: TextStyle(fontWeight: FontWeight.bold, color: kColorTextDark)),
+              PopupMenuButton<DeudorSortOrder>(
+                onSelected: (DeudorSortOrder result) {
+                  setState(() {
+                    _sortOrder = result;
+                    _aplicarFiltros();
+                  });
+                },
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<DeudorSortOrder>>[
+                  const PopupMenuItem<DeudorSortOrder>(
+                    value: DeudorSortOrder.porDeuda,
+                    child: Text('Mayor Deuda'),
+                  ),
+                  const PopupMenuItem<DeudorSortOrder>(
+                    value: DeudorSortOrder.porAntiguedad,
+                    child: Text('Más Antiguos'),
+                  ),
+                ],
+                child: Row(
+                  children: [
+                    Text(
+                      _sortOrder == DeudorSortOrder.porDeuda ? 'Mayor Deuda' : 'Más Antiguos',
+                      style: const TextStyle(color: kColorPrimary, fontWeight: FontWeight.bold),
+                    ),
+                    const Icon(Icons.arrow_drop_down, color: kColorPrimary),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<Producto>(
+            value: _productoSeleccionado,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: "Filtrar por producto",
+              prefixIcon: const Icon(Icons.cake_outlined, color: kColorPrimary),
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.5),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+              suffixIcon: _productoSeleccionado != null ? IconButton(
+                icon: const Icon(Icons.clear, color: Colors.grey),
+                onPressed: () {
+                  setState(() {
+                    _productoSeleccionado = null;
+                    _aplicarFiltros();
+                  });
+                },
+              ) : null,
+            ),
+            items: _listaDeProductos.map<DropdownMenuItem<Producto>>((Producto producto) {
+              return DropdownMenuItem<Producto>(
+                value: producto,
+                child: Text(producto.nombre, overflow: TextOverflow.ellipsis),
+              );
+            }).toList(),
+            onChanged: (Producto? nuevoValor) {
+              setState(() {
+                _productoSeleccionado = nuevoValor;
+                _aplicarFiltros();
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildResumenGeneral() {
+    final double deudaFiltrada = _clientesFiltrados.fold(0.0, (sum, c) => sum + c['deuda']);
     return AcrylicCard(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Row(
+        child: Column(
           children: [
-            Icon(Icons.warning_amber_rounded, color: Colors.redAccent.shade200),
-            const SizedBox(width: 12),
-            const Expanded(
-                child: Text("Deuda Total Pendiente",
-                    style: TextStyle(fontWeight: FontWeight.bold, color: kColorTextDark))),
-            Text(
-              formatoPesos.format(_deudaTotalGeneral),
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.red.shade700),
-            )
+            Row(
+              children: [
+                Icon(Icons.filter_list, color: Colors.blue.shade300),
+                const SizedBox(width: 12),
+                const Expanded(
+                    child: Text("Deuda (Filtrada)",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: kColorTextDark))),
+                Text(
+                  formatoPesos.format(deudaFiltrada),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blue.shade700),
+                )
+              ],
+            ),
+            const Divider(height: 12, thickness: 0.5),
+            Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.redAccent.shade200),
+                const SizedBox(width: 12),
+                const Expanded(
+                    child: Text("Deuda Total General",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: kColorTextDark))),
+                Text(
+                  formatoPesos.format(_deudaTotalGeneral),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.red.shade700),
+                )
+              ],
+            ),
           ],
         ),
       ),
@@ -245,11 +479,18 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
         children: [
           Icon(Icons.check_circle_outline_rounded, size: 80, color: Colors.teal.withOpacity(0.5)),
           const SizedBox(height: 16),
-          const Text('¡Felicidades!',
+          const Text('¡Todo en orden!',
               style: TextStyle(fontSize: 24, color: kColorTextDark)),
           const SizedBox(height: 8),
-          Text('No hay clientes con deudas pendientes. 🎉',
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Text(
+              _productoSeleccionado == null && _searchController.text.isEmpty && _fechaInicio == null
+                  ? 'No hay clientes con deudas pendientes. 🎉'
+                  : 'No se encontraron deudores que coincidan con los filtros.',
+              textAlign: TextAlign.center,
               style: TextStyle(color: kColorTextDark.withOpacity(0.7), fontSize: 16)),
+          ),
         ],
       ),
     );
@@ -258,6 +499,8 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
   Widget _buildClienteCard(Map<String, dynamic> clienteData) {
     final cliente = clienteData['cliente'] as String;
     final deuda = clienteData['deuda'] as double;
+    final pedidos = clienteData['pedidos'] as List<Pedido>;
+
     return AcrylicCard(
       child: ExpansionTile(
         leading: CircleAvatar(
@@ -271,79 +514,54 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
         subtitle: Text("Deuda total: ${formatoPesos.format(deuda)}",
             style: const TextStyle(color: Colors.redAccent)),
         children: [
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: _obtenerPedidosCliente(cliente),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(color: kColorPrimary,)));
-              }
-              if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text("No se encontraron pedidos pendientes.", style: TextStyle(color: kColorTextDark)));
-              }
-              final pedidos = snapshot.data!;
-              return Column(
-                children: [
-                  ...pedidos.map((pedido) => _buildPedidoItem(pedido)).toList(),
-                  Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.check_circle_outline, size: 18),
-                      label: const Text("Liquidar Deuda del Cliente"),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
-                      onPressed: () => _liquidarCliente(cliente),
-                    ),
-                  )
-                ],
-              );
-            },
+          ...pedidos.map((pedido) => _buildPedidoItem(pedido)).toList(),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.check_circle_outline, size: 18),
+              label: const Text("Liquidar Deuda del Cliente"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+              onPressed: () => _liquidarCliente(cliente),
+            ),
           )
         ],
       ),
     );
   }
 
-  Widget _buildPedidoItem(Map<String, dynamic> pedido) {
-  final detalles = pedido['detalles'] as List<Map<String, dynamic>>;
+  Widget _buildPedidoItem(Pedido pedido) {
+    final fechaFormateada = DateFormat('dd MMM yyyy, hh:mm a', 'es_CO').format(pedido.fecha);
 
-  final objetoPedido = pedido['objetoPedido'] as Pedido;
-
-  final fechaFormateada = DateFormat('dd MMM yyyy, hh:mm a', 'es_CO').format(objetoPedido.fecha);
-
-  return ListTile(
-    title: Text(
-      "Tanda: ${pedido['tanda']}",
-      style: const TextStyle(fontWeight: FontWeight.bold, color: kColorTextDark),
-    ),
-    subtitle: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-
-        Text("Fecha: $fechaFormateada", style: const TextStyle(color: kColorTextDark)),
-        Text("Pendiente: ${formatoPesos.format(pedido['pendiente'])}", style: const TextStyle(color: kColorTextDark)),
-        ...detalles.map((d) => Text("• ${d['cantidad']}x ${d['producto']}", style: TextStyle(color: kColorTextDark.withOpacity(0.7)))),
-      ],
-    ),
-    trailing: IconButton(
-      icon: const Icon(Icons.edit_outlined, color: kColorTextDark),
-      tooltip: "Editar Pedido",
-      onPressed: () async {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => RegistrarPedidoPage(
-              pedidoEditar: pedido['objetoPedido'],
-              tandaId: pedido['tandaId'],
+    return ListTile(
+      title: Text(
+        "Tanda: ${pedido.nombreTanda ?? 'General'}",
+        style: const TextStyle(fontWeight: FontWeight.bold, color: kColorTextDark),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Fecha: $fechaFormateada", style: const TextStyle(color: kColorTextDark)),
+          Text("Pendiente: ${formatoPesos.format(pedido.totalPendiente)}", style: const TextStyle(color: kColorTextDark)),
+          ...pedido.detalles.map((d) => Text("• ${d.cantidad}x ${d.producto.nombre}", style: TextStyle(color: kColorTextDark.withOpacity(0.7)))),
+        ],
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.edit_outlined, color: kColorTextDark),
+        tooltip: "Editar Pedido",
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => RegistrarPedidoPage(
+                pedidoEditar: pedido,
+                tandaId: pedido.tandaId,
+              ),
             ),
-          ),
-        );
-        await _cargarClientes();
-      },
-    ),
-    isThreeLine: true,
-  );
+          );
+          await _cargarClientes();
+        },
+      ),
+      isThreeLine: true,
+    );
+  }
 }
-}
-
-

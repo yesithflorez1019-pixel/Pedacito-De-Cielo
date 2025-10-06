@@ -304,15 +304,26 @@ static Future<void> actualizarPedidoConDetalles(Pedido pedido) async {
   });
 }
 
-
 static Future<List<Pedido>> obtenerPedidos({int? tandaId}) async {
   final db = await _getDatabase();
-  final rows = await db.query(
-    'pedidos',
-    where: tandaId != null ? 'tandaId = ?' : null,
-    whereArgs: tandaId != null ? [tandaId] : null,
-    orderBy: 'id DESC', 
-  );
+
+ 
+  final rows = await db.rawQuery('''
+    SELECT
+      p.id,
+      p.tandaId,
+      p.cliente,
+      p.direccion,
+      p.entregado,
+      p.pagado,
+      p.pagoParcial,
+      p.fecha,
+      t.nombre as nombreTanda 
+    FROM pedidos p
+    LEFT JOIN tandas t ON p.tandaId = t.id
+    ${tandaId != null ? 'WHERE p.tandaId = ?' : ''}
+    ORDER BY p.id DESC
+  ''', tandaId != null ? [tandaId] : null);
 
   List<Pedido> pedidos = [];
   for (final pedidoMap in rows) {
@@ -331,6 +342,7 @@ static Future<List<Pedido>> obtenerPedidos({int? tandaId}) async {
           cantidad: (d['cantidad'] as num).toInt(),
         ));
       } else {
+      
         print('Aviso: Producto con id ${d['productoId']} no encontrado para el pedido $pedidoId.');
       }
     }
@@ -344,12 +356,14 @@ static Future<List<Pedido>> obtenerPedidos({int? tandaId}) async {
       pagado: ((pedidoMap['pagado'] ?? 0) as int) == 1,
       pagoParcial: (pedidoMap['pagoParcial'] as num?)?.toDouble() ?? 0.0,
       detalles: detalles,
-
       fecha: DateTime.parse(pedidoMap['fecha'] as String),
+     
+      nombreTanda: pedidoMap['nombreTanda'] as String?,
     ));
   }
   return pedidos;
 }
+
 
   static Future<void> insertarPedido(int tandaId, List<DetallePedido> detalles) async {
   final db = await _getDatabase();
@@ -1181,4 +1195,28 @@ static Future<double> obtenerIngresosDeHoy() async {
     return (result.first['count'] as int?) ?? 0;
   }
 
+
+// funciones nuevas v9.0 para informe de deudores//
+
+static Future<List<Producto>> obtenerTodosLosProductos() async {
+  final db = await _getDatabase();
+  final List<Map<String, dynamic>> maps = await db.query('productos', orderBy: 'nombre ASC');
+  return List.generate(maps.length, (i) {
+    return Producto.fromMap(maps[i]);
+  });
+}
+
+
+//para verificar si la tanda ya tiene ese nombre
+
+static Future<bool> existeTandaConNombre(String nombre) async {
+  final db = await _getDatabase();
+  final resultado = await db.query(
+    'tandas',
+    where: 'LOWER(nombre) = ?',
+    whereArgs: [nombre.toLowerCase()],
+    limit: 1,
+  );
+  return resultado.isNotEmpty;
+}
 }
