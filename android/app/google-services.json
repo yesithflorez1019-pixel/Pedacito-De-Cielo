@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1053420085133",
+    "project_id": "pedacito-de-cielo-e1867",
+    "storage_bucket": "pedacito-de-cielo-e1867.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1053420085133:android:773224644ca3971959e7c4",
+        "android_client_info": {
+          "package_name": "com.example.postres_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1053420085133-9db15693l4kau76v6uujgbhk7ste5b87.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.postres_app",
+            "certificate_hash": "622e88e2170232ffa4a001d65b95e605409169cf"
+          }
+        },
+        {
+          "client_id": "1053420085133-iu786hlasr2vcnbolvod8t3k79tikol9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCC0ybfvR4yZI1naFloJEjTulMEr_h_t9E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1053420085133-iu786hlasr2vcnbolvod8t3k79tikol9.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1053420085133-hcp2mg7cjihe1djg9485a50qaipa09ne.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.postresApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

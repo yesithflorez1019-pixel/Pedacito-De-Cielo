@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1053420085133",
+    "project_id": "pedacito-de-cielo-e1867",
+    "storage_bucket": "pedacito-de-cielo-e1867.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1053420085133:android:773224644ca3971959e7c4",
+        "android_client_info": {
+          "package_name": "com.example.postres_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCC0ybfvR4yZI1naFloJEjTulMEr_h_t9E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

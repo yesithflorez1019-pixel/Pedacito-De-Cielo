@@ -1,0 +1,519 @@
+// lib/registrar_pedido.dart
+import 'dart:ui';
+import 'package:flutter/material.dart';
+import 'producto.dart';
+import 'pedido.dart';
+import 'detalle_pedido.dart';
+import 'database.dart';
+import 'formato.dart';
+import 'util/app_colors.dart';
+import 'package:postres_app/widgets/acrylic_card.dart';
+
+class RegistrarPedidoPage extends StatefulWidget {
+  final Pedido? pedidoEditar;
+  final int tandaId;
+
+  const RegistrarPedidoPage({
+    super.key,
+    required this.tandaId,
+    this.pedidoEditar,
+  });
+
+  @override
+  State<RegistrarPedidoPage> createState() => _RegistrarPedidoPageState();
+}
+
+class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController clienteController = TextEditingController();
+  final TextEditingController direccionController = TextEditingController();
+  final TextEditingController pagoParcialController = TextEditingController();
+  final TextEditingController searchController = TextEditingController();
+
+  List<Map<String, dynamic>> productos = [];
+  List<Map<String, dynamic>> productosFiltrados = [];
+  List<DetallePedido> detalles = [];
+  bool entregado = false;
+  bool pagado = false;
+
+  Map<int, int> _stockDisponible = {};
+  Map<int, int> _cantidadesEnPedido = {};
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    searchController.addListener(filtrarProductos);
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    clienteController.dispose();
+    direccionController.dispose();
+    pagoParcialController.dispose();
+    searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    final productosDeTanda = await AppDatabase.obtenerProductosDeTanda(widget.tandaId);
+
+    if (mounted) {
+      setState(() {
+        productos = productosDeTanda.map((map) {
+          final productoId = map['productoId'] as int;
+          final stockTotal = map['stock'] as int;
+          _stockDisponible[productoId] = stockTotal;
+          return {
+            'producto': Producto(
+              id: productoId,
+              nombre: map['nombre'] as String,
+              precio: map['precio'] as double,
+            ),
+            'stock': stockTotal,
+          };
+        }).toList();
+        productosFiltrados = List.from(productos);
+        _isLoading = false;
+      });
+    }
+
+    if (widget.pedidoEditar != null) {
+      final pedido = widget.pedidoEditar!;
+      clienteController.text = pedido.cliente;
+      direccionController.text = pedido.direccion;
+      pagoParcialController.text = pedido.pagoParcial.toStringAsFixed(0);
+      entregado = pedido.entregado;
+      pagado = pedido.pagado;
+      detalles = List.from(pedido.detalles);
+      
+      for (var detalle in pedido.detalles) {
+        _cantidadesEnPedido[detalle.producto.id!] = detalle.cantidad;
+        _stockDisponible[detalle.producto.id!] = (_stockDisponible[detalle.producto.id!] ?? 0) + detalle.cantidad;
+      }
+    }
+  }
+
+  void filtrarProductos() {
+    final query = searchController.text.toLowerCase();
+    setState(() {
+      productosFiltrados = productos
+          .where((p) => (p['producto'] as Producto).nombre.toLowerCase().contains(query))
+          .toList();
+    });
+  }
+
+  void agregarDetalle(Producto producto, int cantidad) {
+    setState(() {
+      final productoId = producto.id!;
+      final cantidadActualEnPedido = _cantidadesEnPedido[productoId] ?? 0;
+      final nuevaCantidadTotalEnPedido = cantidadActualEnPedido + cantidad;
+      
+      final stockInicial = _stockDisponible[productoId] ?? 0;
+      final stockRestante = stockInicial - cantidadActualEnPedido;
+
+      if (cantidad > stockRestante) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No hay suficiente stock de ${producto.nombre}. Disponibles: $stockRestante'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+      
+      _cantidadesEnPedido[productoId] = nuevaCantidadTotalEnPedido;
+
+      final index = detalles.indexWhere((d) => d.producto.id == productoId);
+      if (index != -1) {
+        detalles[index].cantidad = nuevaCantidadTotalEnPedido;
+      } else {
+        detalles.add(DetallePedido(producto: producto, cantidad: nuevaCantidadTotalEnPedido));
+      }
+    });
+  }
+
+  void quitarDetalle(DetallePedido detalle) {
+    setState(() {
+      final productoId = detalle.producto.id!;
+      _cantidadesEnPedido.remove(productoId);
+      detalles.remove(detalle);
+    });
+  }
+
+  double get totalPedido => detalles.fold(0, (suma, det) => suma + det.subtotal);
+
+  Future<void> guardarPedido() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (detalles.isEmpty) {
+
+      return;
+    }
+
+    final pago = pagado ? totalPedido : (double.tryParse(pagoParcialController.text) ?? 0.0);
+    
+    final pedido = Pedido(
+      id: widget.pedidoEditar?.id,
+      tandaId: widget.tandaId,
+      cliente: clienteController.text,
+      direccion: direccionController.text,
+      entregado: entregado,
+      pagado: pagado,
+      pagoParcial: pago,
+      detalles: detalles,
+
+      fecha: widget.pedidoEditar?.fecha ?? DateTime.now(), 
+    );
+
+    if (widget.pedidoEditar != null) {
+      await AppDatabase.actualizarPedidoConDetalles(pedido);
+    } else {
+      await AppDatabase.insertarPedidoConDetalles(pedido);
+    }
+    
+    if (mounted) Navigator.pop(context, true);
+  }
+
+  void mostrarDialogoCantidad(Producto producto) {
+    final cantidadController = TextEditingController(text: '1');
+    final stockInicial = _stockDisponible[producto.id!] ?? 0;
+    final cantidadEnPedido = _cantidadesEnPedido[producto.id!] ?? 0;
+    final stockDisponible = stockInicial - cantidadEnPedido;
+    
+    if (stockDisponible <= 0) return;
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: kColorBackground1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Cantidad para ${producto.nombre}', style: const TextStyle(color: kColorPrimary)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: cantidadController,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Cantidad'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Stock disponible: $stockDisponible',
+              style: TextStyle(
+                color: stockDisponible > 0 ? Colors.teal.shade700 : Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(child: Text('Cancelar', style: TextStyle(color: kColorTextDark.withOpacity(0.7))), onPressed: () => Navigator.pop(context)),
+          ElevatedButton(
+            child: const Text('Agregar'),
+            style: ElevatedButton.styleFrom(backgroundColor: kColorPrimary, foregroundColor: Colors.white),
+            onPressed: () {
+              final cantidad = int.tryParse(cantidadController.text) ?? 0;
+              if (cantidad <= 0) {
+                 ScaffoldMessenger.of(context).showSnackBar(
+                   const SnackBar(content: Text('La cantidad debe ser mayor a 0')),
+                 );
+                 return;
+              }
+              if (cantidad > stockDisponible) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Cantidad no disponible. Solo quedan $stockDisponible')),
+                );
+              } else {
+                agregarDetalle(producto, cantidad);
+                Navigator.pop(context);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+  
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [kColorBackground1, kColorBackground2],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: const Center(child: CircularProgressIndicator(color: kColorPrimary)),
+        ),
+      );
+    }
+
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [kColorBackground1, kColorBackground2],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+              decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [kColorHeader1, kColorHeader2],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))
+                  ]),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    Expanded(
+                      child: Text(
+                        widget.pedidoEditar != null ? 'Editar Pedido' : 'Nuevo Pedido',
+                        style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.save_outlined, color: Colors.white),
+                      onPressed: guardarPedido,
+                      tooltip: 'Guardar Pedido',
+                    )
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  padding: const EdgeInsets.all(16.0),
+                  children: [
+                    _buildTotalCard(),
+                    _buildSectionTitle('Datos del Cliente'),
+                    _buildClienteCard(),
+                    _buildSectionTitle('Estado y Pago'),
+                    _buildPagoCard(),
+                    _buildSectionTitle('Añadir Productos'),
+                    _buildAddProductsSection(),
+                    _buildSectionTitle('Resumen del Pedido'),
+                    _buildResumenCard(),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTotalCard() {
+    return AcrylicCard(
+      child:Padding(
+        padding: const EdgeInsets.all(16),
+      child:Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Total del Pedido', style: TextStyle(color: kColorTextDark.withOpacity(0.8), fontSize: 16)),
+          Text(totalPedido.aPesos(), style: const TextStyle(color: kColorPrimary, fontSize: 24, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    ),
+    );
+  }
+  
+  Widget _buildClienteCard() {
+    return AcrylicCard(
+      child:Padding(
+        padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          TextFormField(
+            controller: clienteController,
+            decoration: const InputDecoration(labelText: 'Nombre del Cliente', prefixIcon: Icon(Icons.person_outline, color: kColorPrimary)),
+            validator: (v) => v!.isEmpty ? 'Ingresa el nombre del cliente' : null,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: direccionController,
+            decoration: const InputDecoration(labelText: 'Dirección', prefixIcon: Icon(Icons.location_on_outlined, color: kColorPrimary)),
+            validator: (v) => v!.isEmpty ? 'Ingresa la dirección' : null,
+          ),
+        ],
+      ),
+      ),
+    );
+  }
+  
+  Widget _buildPagoCard() {
+    return AcrylicCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: TextFormField(
+              controller: pagoParcialController,
+              keyboardType: TextInputType.number,
+              enabled: !pagado,
+              decoration: const InputDecoration(
+                labelText: 'Abono Parcial',
+                prefixIcon: Icon(Icons.attach_money_outlined, color: kColorPrimary),
+              ),
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Pagado Completamente', style: TextStyle(color: kColorTextDark)),
+            value: pagado,
+            onChanged: (value) => setState(() {
+              pagado = value;
+              if (pagado) {
+                pagoParcialController.text = totalPedido.toStringAsFixed(0);
+              }
+            }),
+            activeColor: kColorPrimary,
+          ),
+          SwitchListTile(
+            title: const Text('Entregado', style: TextStyle(color: kColorTextDark)),
+            value: entregado,
+            onChanged: (value) => setState(() => entregado = value),
+            activeColor: kColorPrimary,
+          ),
+        ],
+      ),
+      ),
+    );
+  }
+  
+  Widget _buildAddProductsSection() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: TextFormField(controller: searchController, decoration: const InputDecoration(labelText: 'Buscar producto...', prefixIcon: Icon(Icons.search, color: kColorPrimary))),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 140,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: productosFiltrados.length,
+            itemBuilder: (context, index) {
+              final pMap = productosFiltrados[index];
+              final p = pMap['producto'] as Producto;
+              final stockDisponible = (_stockDisponible[p.id!] ?? 0) - (_cantidadesEnPedido[p.id!] ?? 0);
+              return _ProductSelectorCard(
+                producto: p, 
+                stock: stockDisponible, 
+                onTap: () => mostrarDialogoCantidad(p)
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildResumenCard() {
+    return AcrylicCard(
+      child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: detalles.isEmpty
+          ? const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text('Aún no has agregado productos.', style: TextStyle(color: Colors.grey)),
+            )
+          : ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: detalles.length,
+              itemBuilder: (_, index) {
+                final detalle = detalles[index];
+                return ListTile(
+                  leading: const Icon(Icons.shopping_basket_outlined, color: kColorPrimary),
+                  title: Text('${detalle.cantidad}x ${detalle.producto.nombre}', style: const TextStyle(color: kColorTextDark)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(detalle.subtotal.aPesos(), style: const TextStyle(fontWeight: FontWeight.bold, color: kColorTextDark)),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red),
+                        onPressed: () => quitarDetalle(detalle),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24.0, bottom: 8.0, left: 8.0),
+      child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: kColorPrimary)),
+    );
+  }
+}
+
+
+
+class _ProductSelectorCard extends StatelessWidget {
+  final Producto producto;
+  final int stock;
+  final VoidCallback onTap;
+
+  const _ProductSelectorCard({required this.producto, required this.stock, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isAvailable = stock > 0;
+    return SizedBox(
+      width: 130,
+      child: Card(
+        color: isAvailable ? Colors.white : Colors.grey.shade200,
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: InkWell(
+          onTap: isAvailable ? onTap : null,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(producto.nombre, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: isAvailable ? kColorTextDark : Colors.grey.shade600)),
+                const Spacer(),
+                Text(producto.precio.aPesos(), style: TextStyle(color: isAvailable ? kColorTextDark.withOpacity(0.7) : Colors.grey.shade600)),
+                Text('Stock: $stock', style: TextStyle(color: isAvailable ? Colors.teal : Colors.red, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                Icon(Icons.add_shopping_cart_outlined, color: isAvailable ? kColorPrimary : Colors.grey),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
