@@ -751,51 +751,58 @@ static Future<double> _calcularCostoUnitario(dynamic txn, Producto producto) asy
 }
 
 
+
+
 static Future<void> liquidarCliente(String cliente) async {
   final db = await _getDatabase();
+  
+
   final nombreNormalizado = cliente.toLowerCase().trim();
+
 
   final pedidos = await db.query(
     'pedidos',
-    where: 'LOWER(cliente) = ? AND pagado = 0',
+    where: 'TRIM(LOWER(cliente)) = ? AND pagado = 0',
     whereArgs: [nombreNormalizado],
   );
+
+  if (pedidos.isEmpty) {
+
+    print("No se encontraron pedidos para liquidar para el cliente: $cliente (esto es normal si ya no debe nada).");
+    return;
+  }
+
 
   for (final pedido in pedidos) {
     final pedidoId = pedido['id'] as int;
 
-    final detalles = await db.query(
-      'detalles_pedido',
-      where: 'pedidoId = ?',
-      whereArgs: [pedidoId],
-    );
 
-    double total = 0.0;
+    final detalles = await db.query('detalles_pedido', where: 'pedidoId = ?', whereArgs: [pedidoId]);
+    double totalDelPedido = 0.0;
     for (final d in detalles) {
       final productoId = d['productoId'] as int;
       final cantidad = d['cantidad'] as int;
-
-      final producto = await db.query(
-        'productos',
-        where: 'id = ?',
-        whereArgs: [productoId],
-      );
-
-      if (producto.isNotEmpty) {
-        final precio = (producto.first['precio'] as num).toDouble();
-        total += precio * cantidad;
+      final productoData = await db.query('productos', where: 'id = ?', whereArgs: [productoId]);
+      if (productoData.isNotEmpty) {
+        final precio = (productoData.first['precio'] as num).toDouble();
+        totalDelPedido += precio * cantidad;
       }
     }
 
+
     await db.update(
       'pedidos',
-      {'pagado': 1, 'pagoParcial': total},
+      {
+        'pagado': 1,
+        'pagoParcial': totalDelPedido,
+      },
       where: 'id = ?',
       whereArgs: [pedidoId],
     );
   }
 
-  print("Pedidos liquidados: ${pedidos.length}");
+
+  print("Pedidos liquidados para '$cliente': ${pedidos.length}");
 }
 
 
