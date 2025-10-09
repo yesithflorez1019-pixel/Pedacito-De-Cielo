@@ -1,5 +1,4 @@
 // lib/insumos_page.dart
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'database.dart';
 import 'insumo.dart';
@@ -144,7 +143,7 @@ class _InsumosPageState extends State<InsumosPage> {
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: unidadSeleccionada,
+                      initialValue: unidadSeleccionada,
                       decoration: const InputDecoration(
                           labelText: 'Unidad de Medida',
                           prefixIcon: Icon(Icons.straighten_outlined,
@@ -206,12 +205,12 @@ class _InsumosPageState extends State<InsumosPage> {
                       Navigator.pop(context, true);
                     }
                   },
-                  child: const Text('Guardar'),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: kColorPrimary,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12))),
+                  child: const Text('Guardar'),
                 ),
               ],
             );

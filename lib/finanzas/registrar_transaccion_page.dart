@@ -106,7 +106,7 @@ class _RegistrarTransaccionPageState extends State<RegistrarTransaccionPage> {
     final Color colorPrimario = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
 

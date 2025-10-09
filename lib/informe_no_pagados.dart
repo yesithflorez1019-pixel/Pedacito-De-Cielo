@@ -404,7 +404,7 @@ Future<void> _liquidarCliente(String cliente) async {
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<Producto>(
-            value: _productoSeleccionado,
+            initialValue: _productoSeleccionado,
             isExpanded: true,
             decoration: InputDecoration(
               labelText: "Filtrar por producto",
@@ -523,7 +523,7 @@ Future<void> _liquidarCliente(String cliente) async {
         subtitle: Text("Deuda total: ${formatoPesos.format(deuda)}",
             style: const TextStyle(color: Colors.redAccent)),
         children: [
-          ...pedidos.map((pedido) => _buildPedidoItem(pedido)).toList(),
+          ...pedidos.map((pedido) => _buildPedidoItem(pedido)),
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: ElevatedButton.icon(

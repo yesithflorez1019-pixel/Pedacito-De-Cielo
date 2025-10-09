@@ -1,5 +1,4 @@
 // lib/ver_productos.dart
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'producto.dart';
 import 'database.dart';

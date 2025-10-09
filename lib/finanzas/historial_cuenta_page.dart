@@ -39,7 +39,7 @@ class _HistorialCuentaPageState extends State<HistorialCuentaPage> {
 
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
 
@@ -165,7 +165,7 @@ class _HistorialCuentaPageState extends State<HistorialCuentaPage> {
                                 style: TextStyle(color: colorTextoOscuro.withOpacity(0.7)),
                               ),
                               trailing: Text(
-                                '${transaccion.monto.aPesos()}',
+                                transaccion.monto.aPesos(),
                                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                   color: color,
                                   fontWeight: FontWeight.bold,

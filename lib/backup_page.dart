@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:postres_app/util/app_colors.dart';
 import 'package:postres_app/database.dart';
-import 'dart:ui';
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -363,7 +362,7 @@ class _BackupPageState extends State<BackupPage> {
         subtitle: Text('Se guardará una copia cada 6 horas con internet.', style: TextStyle(color: kColorTextDark.withOpacity(0.7))),
         value: _isAutomaticBackupEnabled,
         onChanged: _toggleAutomaticBackup,
-        activeColor: kColorPrimary,
+        activeThumbColor: kColorPrimary,
         secondary: const Icon(Icons.sync_outlined, color: kColorPrimary),
       ),
     );

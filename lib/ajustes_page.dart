@@ -41,7 +41,7 @@ class _AjustesPageState extends State<AjustesPage> {
                           subtitle: Text('Desactiva esto si la app se siente lenta.', style: TextStyle(color: kColorTextDark.withOpacity(0.7))),
                           value: efectosActivos,
                           onChanged: _onToggle,
-                          activeColor: kColorPrimary,
+                          activeThumbColor: kColorPrimary,
                           secondary: const Icon(Icons.blur_on_outlined, color: kColorPrimary),
                         ),
                       );

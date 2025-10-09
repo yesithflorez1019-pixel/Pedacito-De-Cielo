@@ -9,7 +9,7 @@ import 'tanda.dart';
 import 'insumo.dart';
 import 'finanzas/cuenta.dart';
 import 'finanzas/transaccion.dart';
-
+import 'cliente.dart';
 
 
 class AppDatabase {
@@ -51,6 +51,15 @@ class AppDatabase {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre TEXT NOT NULL,
     balance REAL NOT NULL
+  )
+''');
+
+await db.execute('''
+  CREATE TABLE IF NOT EXISTS clientes(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL,
+    direccion TEXT,
+    telefono TEXT
   )
 ''');
 
@@ -1226,4 +1235,56 @@ static Future<bool> existeTandaConNombre(String nombre) async {
   );
   return resultado.isNotEmpty;
 }
+
+
+
+
+  //v9.5 yrf
+
+
+// ================== CLIENTES ==================
+
+static Future<int> insertarCliente(Cliente cliente) async {
+  final db = await _getDatabase();
+  return await db.insert('clientes', cliente.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
+}
+
+static Future<void> actualizarCliente(Cliente cliente) async {
+  final db = await _getDatabase();
+  await db.update(
+    'clientes',
+    cliente.toMap(),
+    where: 'id = ?',
+    whereArgs: [cliente.id],
+  );
+}
+
+static Future<void> eliminarCliente(int id) async {
+  final db = await _getDatabase();
+  await db.delete('clientes', where: 'id = ?', whereArgs: [id]);
+}
+
+static Future<List<Cliente>> obtenerClientes() async {
+  final db = await _getDatabase();
+  final List<Map<String, dynamic>> maps = await db.query('clientes', orderBy: 'nombre ASC');
+  return List.generate(maps.length, (i) {
+    return Cliente.fromMap(maps[i]);
+  });
+}
+
+// Esta función nos ayudará a autocompletar
+static Future<List<Cliente>> buscarClientesPorNombre(String query) async {
+  if (query.isEmpty) return [];
+  final db = await _getDatabase();
+  final List<Map<String, dynamic>> maps = await db.query(
+    'clientes',
+    where: 'nombre LIKE ?',
+    whereArgs: ['%$query%'],
+    limit: 10,
+  );
+  return List.generate(maps.length, (i) {
+    return Cliente.fromMap(maps[i]);
+  });
+}
+
 }

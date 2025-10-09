@@ -7,6 +7,7 @@ class Pedido {
   final int tandaId;
   final String cliente;
   final String direccion;
+  final String? telefono;
   final bool entregado;
   final bool pagado;
   final double pagoParcial;
@@ -19,6 +20,7 @@ class Pedido {
     required this.tandaId,
     required this.cliente,
     required this.direccion,
+    this.telefono,
     this.entregado = false,
     this.pagado = false,
     this.pagoParcial = 0.0,

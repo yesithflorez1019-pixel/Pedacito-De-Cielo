@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:postres_app/database.dart';
 import 'package:postres_app/producto.dart';
 import 'package:postres_app/tanda.dart';
-import 'dart:ui';
 import 'util/app_colors.dart';
 import 'package:postres_app/widgets/acrylic_card.dart';
 
@@ -22,7 +21,7 @@ class _CrearTandaPageState extends State<CrearTandaPage> {
 
   List<Producto> _todosLosProductos = [];
   List<Producto> _productosFiltrados = [];
-  Map<int, int> _productosSeleccionados = {};
+  final Map<int, int> _productosSeleccionados = {};
   final Map<int, TextEditingController> _stockControllers = {};
 
   @override
@@ -41,7 +40,9 @@ class _CrearTandaPageState extends State<CrearTandaPage> {
   void dispose() {
     _nombreTandaCtrl.dispose();
     _searchCtrl.dispose();
-    _stockControllers.values.forEach((controller) => controller.dispose());
+    for (var controller in _stockControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 

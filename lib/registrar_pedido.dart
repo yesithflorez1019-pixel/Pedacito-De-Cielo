@@ -1,12 +1,14 @@
 // lib/registrar_pedido.dart
-import 'dart:ui';
+
 import 'package:flutter/material.dart';
-import 'producto.dart';
-import 'pedido.dart';
-import 'detalle_pedido.dart';
-import 'database.dart';
-import 'formato.dart';
-import 'util/app_colors.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
+import 'package:postres_app/cliente.dart';
+import 'package:postres_app/database.dart';
+import 'package:postres_app/detalle_pedido.dart';
+import 'package:postres_app/formato.dart';
+import 'package:postres_app/pedido.dart';
+import 'package:postres_app/producto.dart';
+import 'package:postres_app/util/app_colors.dart';
 import 'package:postres_app/widgets/acrylic_card.dart';
 
 class RegistrarPedidoPage extends StatefulWidget {
@@ -27,6 +29,7 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController clienteController = TextEditingController();
   final TextEditingController direccionController = TextEditingController();
+  final TextEditingController telefonoController = TextEditingController(); // <-- AÑADIDO
   final TextEditingController pagoParcialController = TextEditingController();
   final TextEditingController searchController = TextEditingController();
 
@@ -51,6 +54,7 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   void dispose() {
     clienteController.dispose();
     direccionController.dispose();
+    telefonoController.dispose(); // <-- AÑADIDO
     pagoParcialController.dispose();
     searchController.dispose();
     super.dispose();
@@ -83,6 +87,7 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
       final pedido = widget.pedidoEditar!;
       clienteController.text = pedido.cliente;
       direccionController.text = pedido.direccion;
+      telefonoController.text = pedido.telefono ?? ''; // <-- AÑADIDO
       pagoParcialController.text = pedido.pagoParcial.toStringAsFixed(0);
       entregado = pedido.entregado;
       pagado = pedido.pagado;
@@ -148,7 +153,6 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   Future<void> guardarPedido() async {
     if (!_formKey.currentState!.validate()) return;
     if (detalles.isEmpty) {
-
       return;
     }
 
@@ -157,13 +161,13 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
     final pedido = Pedido(
       id: widget.pedidoEditar?.id,
       tandaId: widget.tandaId,
-      cliente: clienteController.text,
-      direccion: direccionController.text,
+      cliente: clienteController.text.trim(),
+      direccion: direccionController.text.trim(),
+      telefono: telefonoController.text.trim(), // <-- AÑADIDO
       entregado: entregado,
       pagado: pagado,
       pagoParcial: pago,
       detalles: detalles,
-
       fecha: widget.pedidoEditar?.fecha ?? DateTime.now(), 
     );
 
@@ -173,6 +177,15 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
       await AppDatabase.insertarPedidoConDetalles(pedido);
     }
     
+    // Guardar o actualizar cliente en la tabla de clientes
+    final clienteAGuardar = Cliente(
+      nombre: clienteController.text.trim(),
+      direccion: direccionController.text.trim(),
+      telefono: telefonoController.text.trim()
+    );
+    await AppDatabase.insertarCliente(clienteAGuardar);
+
+
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -343,27 +356,58 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   
   Widget _buildClienteCard() {
     return AcrylicCard(
-      child:Padding(
+      child: Padding(
         padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          TextFormField(
-            controller: clienteController,
-            decoration: const InputDecoration(labelText: 'Nombre del Cliente', prefixIcon: Icon(Icons.person_outline, color: kColorPrimary)),
-            validator: (v) => v!.isEmpty ? 'Ingresa el nombre del cliente' : null,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: direccionController,
-            decoration: const InputDecoration(labelText: 'Dirección', prefixIcon: Icon(Icons.location_on_outlined, color: kColorPrimary)),
-            validator: (v) => v!.isEmpty ? 'Ingresa la dirección' : null,
-          ),
-        ],
-      ),
+        child: Column(
+          children: [
+            // --- CAMPO DE AUTOCOMPLETADO ---
+            TypeAheadFormField<Cliente>(
+              textFieldConfiguration: TextFieldConfiguration(
+                controller: clienteController,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre del Cliente',
+                  prefixIcon: Icon(Icons.person_outline, color: kColorPrimary),
+                ),
+              ),
+              suggestionsCallback: (pattern) async {
+                return await AppDatabase.buscarClientesPorNombre(pattern);
+              },
+              itemBuilder: (context, suggestion) {
+                return ListTile(
+                  title: Text(suggestion.nombre),
+                  subtitle: Text(suggestion.telefono ?? ''),
+                );
+              },
+              onSuggestionSelected: (suggestion) {
+                // Al seleccionar un cliente, rellenamos los campos
+                clienteController.text = suggestion.nombre;
+                direccionController.text = suggestion.direccion ?? '';
+                telefonoController.text = suggestion.telefono ?? '';
+              },
+              validator: (value) => value!.isEmpty ? 'Ingresa el nombre del cliente' : null,
+              noItemsFoundBuilder: (context) => const Padding(
+                padding: EdgeInsets.all(8.0),
+                child: Text('No se encontraron clientes, se creará uno nuevo.'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: direccionController,
+              decoration: const InputDecoration(labelText: 'Dirección', prefixIcon: Icon(Icons.location_on_outlined, color: kColorPrimary)),
+              validator: (v) => v!.isEmpty ? 'Ingresa la dirección' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: telefonoController,
+              decoration: const InputDecoration(labelText: 'Teléfono (WhatsApp)', prefixIcon: Icon(Icons.phone, color: kColorPrimary)),
+              keyboardType: TextInputType.phone,
+            ),
+          ],
+        ),
       ),
     );
   }
-  
+
   Widget _buildPagoCard() {
     return AcrylicCard(
       child: Padding(
@@ -476,8 +520,6 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
     );
   }
 }
-
-
 
 class _ProductSelectorCard extends StatelessWidget {
   final Producto producto;

@@ -4,7 +4,6 @@ import 'database.dart';
 import 'gasto.dart';
 import 'formato.dart';
 import 'package:intl/intl.dart';
-import 'dart:ui';
 import 'util/app_colors.dart';
 import 'package:postres_app/widgets/acrylic_card.dart';
 
