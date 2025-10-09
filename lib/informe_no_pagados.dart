@@ -7,7 +7,7 @@ import 'registrar_pedido.dart';
 import 'util/app_colors.dart';
 import 'widgets/acrylic_card.dart';
 
-// Enum para manejar los tipos de filtro y ordenamiento
+
 enum DeudorSortOrder { porDeuda, porAntiguedad }
 
 class InformeNoPagadosPage extends StatefulWidget {
@@ -18,12 +18,16 @@ class InformeNoPagadosPage extends StatefulWidget {
 }
 
 class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
-  // Estado para la lista de clientes completa y la filtrada
+
+
+
+
+
   List<Map<String, dynamic>> _clientesCompletos = [];
   List<Map<String, dynamic>> _clientesFiltrados = [];
   double _deudaTotalGeneral = 0.0;
 
-  // Controladores y estado para los filtros
+ 
   final _searchController = TextEditingController();
   DeudorSortOrder _sortOrder = DeudorSortOrder.porDeuda;
   Producto? _productoSeleccionado;
@@ -38,7 +42,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
     decimalDigits: 0,
   );
   
-  // Formato para mostrar las fechas en la UI
+
   final formatoFecha = DateFormat('dd MMM, yyyy', 'es_CO');
 
   @override
@@ -54,7 +58,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
     super.dispose();
   }
 
-  /// Carga tanto los productos (para el dropdown) como los clientes deudores.
+ 
   Future<void> _cargarDatosIniciales() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -73,7 +77,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
     }
   }
 
-  /// Carga y procesa la información de todos los clientes con deudas.
+
   Future<void> _cargarClientes() async {
     final todosLosPedidosNoPagados = await AppDatabase.obtenerPedidos()
       ..retainWhere((p) => !p.pagado && p.totalPendiente > 0);
@@ -105,17 +109,17 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
     });
   }
 
-  /// Aplica todos los filtros en cascada: fecha, producto, texto y ordenamiento.
+
   void _aplicarFiltros() {
     List<Map<String, dynamic>> resultado = List.from(_clientesCompletos);
 
-    // 1. Filtro por RANGO DE FECHAS
+  
     if (_fechaInicio != null && _fechaFin != null) {
       resultado = resultado.where((cliente) {
         final pedidos = cliente['pedidos'] as List<Pedido>;
         return pedidos.any((pedido) {
           final fechaPedido = pedido.fecha;
-          // Normalizar fechas para comparar solo el día, sin la hora
+         
           final fechaInicioDia = DateTime(_fechaInicio!.year, _fechaInicio!.month, _fechaInicio!.day);
           final fechaFinDia = DateTime(_fechaFin!.year, _fechaFin!.month, _fechaFin!.day, 23, 59, 59);
           return !fechaPedido.isBefore(fechaInicioDia) && !fechaPedido.isAfter(fechaFinDia);
@@ -123,7 +127,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
       }).toList();
     }
     
-    // 2. Filtro por producto seleccionado
+
     if (_productoSeleccionado != null) {
       final productoId = _productoSeleccionado!.id;
       resultado = resultado.where((cliente) {
@@ -133,7 +137,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
       }).toList();
     }
 
-    // 3. Filtro por texto de búsqueda
+   
     final query = _searchController.text.toLowerCase();
     if (query.isNotEmpty) {
       resultado = resultado
@@ -141,7 +145,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
           .toList();
     }
 
-    // 4. Ordenamiento
+  
     switch (_sortOrder) {
       case DeudorSortOrder.porDeuda:
         resultado.sort((a, b) => (b['deuda'] as double).compareTo(a['deuda']));
@@ -158,7 +162,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
     });
   }
   
-  /// Muestra el selector de fechas.
+
   Future<void> _seleccionarFecha(BuildContext context, {required bool esFechaInicio}) async {
     final DateTime? fechaSeleccionada = await showDatePicker(
       context: context,
@@ -171,7 +175,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
       setState(() {
         if (esFechaInicio) {
           _fechaInicio = fechaSeleccionada;
-          // Si no hay fecha de fin, se pone la misma que la de inicio
+       
           _fechaFin ??= fechaSeleccionada;
         } else {
           _fechaFin = fechaSeleccionada;
@@ -181,32 +185,37 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
     }
   }
   
-  Future<void> _liquidarCliente(String cliente) async {
-    final confirmado = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: kColorBackground1,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Confirmar Liquidación", style: TextStyle(color: kColorPrimary)),
-        content: Text("¿Estás seguro de marcar todos los pedidos de $cliente como pagados?"),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text("Cancelar", style: TextStyle(color: kColorTextDark.withOpacity(0.7)))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Sí, liquidar"),
-          ),
-        ],
-      ),
-    );
 
-    if (confirmado == true) {
-      await AppDatabase.liquidarCliente(cliente);
+
+Future<void> _liquidarCliente(String cliente) async {
+  final confirmado = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      backgroundColor: kColorBackground1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text("Confirmar Liquidación", style: TextStyle(color: kColorPrimary)),
+      content: Text("¿Estás seguro de marcar todos los pedidos de $cliente como pagados?"),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text("Cancelar", style: TextStyle(color: kColorTextDark.withOpacity(0.7)))),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text("Sí, liquidar"),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmado == true) {
+    
+    await AppDatabase.liquidarCliente(cliente);
+    if (mounted) {
       await _cargarClientes();
     }
   }
+}
 
 
   @override
@@ -309,14 +318,14 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
     );
   }
 
-  /// Widget que contiene todos los filtros
+ 
   Widget _buildFiltrosUI() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-           // --- NUEVO FILTRO DE FECHA ---
+         
           const Text("Filtrar por fecha de pedido:", style: TextStyle(fontWeight: FontWeight.bold, color: kColorTextDark)),
           const SizedBox(height: 8),
           Row(
@@ -359,7 +368,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
             ],
           ),
           const Divider(height: 24),
-          // --- FILTROS ANTERIORES ---
+        
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
