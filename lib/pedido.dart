@@ -1,6 +1,8 @@
+// lib/pedido.dart - VERSIÓN FINAL CORREGIDA
+
 import 'detalle_pedido.dart';
 import 'formato.dart';
-import 'producto.dart';
+import 'producto.dart'; // Asegúrate de que esta importación exista si no está
 
 class Pedido {
   final int? id;
@@ -41,6 +43,7 @@ class Pedido {
       'tandaId': tandaId,
       'cliente': cliente,
       'direccion': direccion,
+      'telefono': telefono, // <-- CORREGIDO
       'entregado': entregado,
       'pagado': pagado,
       'pagoParcial': pagoParcial,
@@ -56,6 +59,7 @@ class Pedido {
       tandaId: map['tandaId'] as int,
       cliente: map['cliente'] as String,
       direccion: map['direccion'] as String,
+      telefono: map['telefono'] as String?, // <-- CORREGIDO
       entregado: map['entregado'] == 1,
       pagado: map['pagado'] == 1,
       pagoParcial: (map['pagoParcial'] as num).toDouble(),
@@ -72,6 +76,7 @@ class Pedido {
     int? tandaId,
     String? cliente,
     String? direccion,
+    String? telefono, // <-- CORREGIDO
     bool? entregado,
     bool? pagado,
     double? pagoParcial,
@@ -84,6 +89,7 @@ class Pedido {
       tandaId: tandaId ?? this.tandaId,
       cliente: cliente ?? this.cliente,
       direccion: direccion ?? this.direccion,
+      telefono: telefono ?? this.telefono, // <-- CORREGIDO
       entregado: entregado ?? this.entregado,
       pagado: pagado ?? this.pagado,
       pagoParcial: pagoParcial ?? this.pagoParcial,

@@ -209,8 +209,11 @@ class _BackupPageState extends State<BackupPage> {
           final restoredFile = File('${appDir.path}/$filename');
           await restoredFile.writeAsBytes(data);
         }
+      
       }
       
+      await AppDatabase.asegurarTablaClientes();
+    
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('sync_completed_${user.uid}', true);
 

@@ -1,7 +1,6 @@
-// lib/registrar_pedido.dart
+// lib/registrar_pedido.dart - VERSIÓN FINAL CON AUTOCOMPLETADO NATIVO Y CORRECCIONES
 
 import 'package:flutter/material.dart';
-import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:postres_app/cliente.dart';
 import 'package:postres_app/database.dart';
 import 'package:postres_app/detalle_pedido.dart';
@@ -29,7 +28,7 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController clienteController = TextEditingController();
   final TextEditingController direccionController = TextEditingController();
-  final TextEditingController telefonoController = TextEditingController(); // <-- AÑADIDO
+  final TextEditingController telefonoController = TextEditingController();
   final TextEditingController pagoParcialController = TextEditingController();
   final TextEditingController searchController = TextEditingController();
 
@@ -54,40 +53,20 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   void dispose() {
     clienteController.dispose();
     direccionController.dispose();
-    telefonoController.dispose(); // <-- AÑADIDO
+    telefonoController.dispose();
     pagoParcialController.dispose();
     searchController.dispose();
     super.dispose();
   }
 
+  
   Future<void> _loadData() async {
-    final productosDeTanda = await AppDatabase.obtenerProductosDeTanda(widget.tandaId);
-
-    if (mounted) {
-      setState(() {
-        productos = productosDeTanda.map((map) {
-          final productoId = map['productoId'] as int;
-          final stockTotal = map['stock'] as int;
-          _stockDisponible[productoId] = stockTotal;
-          return {
-            'producto': Producto(
-              id: productoId,
-              nombre: map['nombre'] as String,
-              precio: map['precio'] as double,
-            ),
-            'stock': stockTotal,
-          };
-        }).toList();
-        productosFiltrados = List.from(productos);
-        _isLoading = false;
-      });
-    }
-
+   
     if (widget.pedidoEditar != null) {
       final pedido = widget.pedidoEditar!;
       clienteController.text = pedido.cliente;
       direccionController.text = pedido.direccion;
-      telefonoController.text = pedido.telefono ?? ''; // <-- AÑADIDO
+      telefonoController.text = pedido.telefono ?? ''; 
       pagoParcialController.text = pedido.pagoParcial.toStringAsFixed(0);
       entregado = pedido.entregado;
       pagado = pedido.pagado;
@@ -95,10 +74,35 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
       
       for (var detalle in pedido.detalles) {
         _cantidadesEnPedido[detalle.producto.id!] = detalle.cantidad;
-        _stockDisponible[detalle.producto.id!] = (_stockDisponible[detalle.producto.id!] ?? 0) + detalle.cantidad;
       }
     }
+
+    
+    final productosDeTanda = await AppDatabase.obtenerProductosDeTanda(widget.tandaId);
+
+   
+    if (mounted) {
+      setState(() {
+        productos = productosDeTanda.map((map) {
+          final productoId = map['productoId'] as int;
+          final stockTotal = map['stock'] as int;
+          final stockEnPedido = _cantidadesEnPedido[productoId] ?? 0;
+          _stockDisponible[productoId] = stockTotal + stockEnPedido;
+          return {
+            'producto': Producto(
+              id: productoId,
+              nombre: map['nombre'] as String,
+              precio: map['precio'] as double,
+            ),
+            'stock': stockTotal + stockEnPedido,
+          };
+        }).toList();
+        productosFiltrados = List.from(productos);
+        _isLoading = false;
+      });
+    }
   }
+
 
   void filtrarProductos() {
     final query = searchController.text.toLowerCase();
@@ -113,15 +117,13 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
     setState(() {
       final productoId = producto.id!;
       final cantidadActualEnPedido = _cantidadesEnPedido[productoId] ?? 0;
-      final nuevaCantidadTotalEnPedido = cantidadActualEnPedido + cantidad;
-      
-      final stockInicial = _stockDisponible[productoId] ?? 0;
-      final stockRestante = stockInicial - cantidadActualEnPedido;
+      final stockDisponibleReal = _stockDisponible[productoId] ?? 0;
+      final stockRestante = stockDisponibleReal - cantidadActualEnPedido;
 
       if (cantidad > stockRestante) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('No hay suficiente stock de ${producto.nombre}. Disponibles: $stockRestante'),
+            content: Text('No hay suficiente stock. Disponibles: $stockRestante'),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ),
@@ -129,13 +131,13 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
         return;
       }
       
-      _cantidadesEnPedido[productoId] = nuevaCantidadTotalEnPedido;
+      _cantidadesEnPedido[productoId] = cantidadActualEnPedido + cantidad;
 
       final index = detalles.indexWhere((d) => d.producto.id == productoId);
       if (index != -1) {
-        detalles[index].cantidad = nuevaCantidadTotalEnPedido;
+        detalles[index].cantidad += cantidad;
       } else {
-        detalles.add(DetallePedido(producto: producto, cantidad: nuevaCantidadTotalEnPedido));
+        detalles.add(DetallePedido(producto: producto, cantidad: cantidad));
       }
     });
   }
@@ -163,7 +165,7 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
       tandaId: widget.tandaId,
       cliente: clienteController.text.trim(),
       direccion: direccionController.text.trim(),
-      telefono: telefonoController.text.trim(), // <-- AÑADIDO
+      telefono: telefonoController.text.trim(),
       entregado: entregado,
       pagado: pagado,
       pagoParcial: pago,
@@ -177,7 +179,7 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
       await AppDatabase.insertarPedidoConDetalles(pedido);
     }
     
-    // Guardar o actualizar cliente en la tabla de clientes
+    
     final clienteAGuardar = Cliente(
       nombre: clienteController.text.trim(),
       direccion: direccionController.text.trim(),
@@ -360,35 +362,59 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // --- CAMPO DE AUTOCOMPLETADO ---
-            TypeAheadFormField<Cliente>(
-              textFieldConfiguration: TextFieldConfiguration(
-                controller: clienteController,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre del Cliente',
-                  prefixIcon: Icon(Icons.person_outline, color: kColorPrimary),
-                ),
-              ),
-              suggestionsCallback: (pattern) async {
-                return await AppDatabase.buscarClientesPorNombre(pattern);
+            Autocomplete<Cliente>(
+              key: Key(clienteController.text),
+              initialValue: TextEditingValue(text: clienteController.text),
+              displayStringForOption: (option) => option.nombre,
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                if (textEditingValue.text == '') {
+                  return const Iterable<Cliente>.empty();
+                }
+                clienteController.text = textEditingValue.text;
+                return AppDatabase.buscarClientesPorNombre(textEditingValue.text);
               },
-              itemBuilder: (context, suggestion) {
-                return ListTile(
-                  title: Text(suggestion.nombre),
-                  subtitle: Text(suggestion.telefono ?? ''),
+              onSelected: (Cliente selection) {
+                clienteController.text = selection.nombre;
+                direccionController.text = selection.direccion ?? '';
+                telefonoController.text = selection.telefono ?? '';
+                FocusScope.of(context).unfocus();
+              },
+              fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre del Cliente',
+                    prefixIcon: Icon(Icons.person_outline, color: kColorPrimary),
+                  ),
+                  validator: (value) => value!.isEmpty ? 'Ingresa el nombre del cliente' : null,
                 );
               },
-              onSuggestionSelected: (suggestion) {
-                // Al seleccionar un cliente, rellenamos los campos
-                clienteController.text = suggestion.nombre;
-                direccionController.text = suggestion.direccion ?? '';
-                telefonoController.text = suggestion.telefono ?? '';
+              optionsViewBuilder: (context, onSelected, options) {
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4.0,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        itemCount: options.length,
+                        itemBuilder: (BuildContext context, int index) {
+                          final Cliente option = options.elementAt(index);
+                          return InkWell(
+                            onTap: () => onSelected(option),
+                            child: ListTile(
+                              title: Text(option.nombre),
+                              subtitle: Text(option.telefono ?? 'Sin teléfono'),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
               },
-              validator: (value) => value!.isEmpty ? 'Ingresa el nombre del cliente' : null,
-              noItemsFoundBuilder: (context) => const Padding(
-                padding: EdgeInsets.all(8.0),
-                child: Text('No se encontraron clientes, se creará uno nuevo.'),
-              ),
             ),
             const SizedBox(height: 12),
             TextFormField(

@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:postres_app/cliente.dart';
 import 'package:postres_app/database.dart';
-import 'package:postres_app/util/app_colors.dart';
 
 class RegistrarClientePage extends StatefulWidget {
   final Cliente? cliente;
