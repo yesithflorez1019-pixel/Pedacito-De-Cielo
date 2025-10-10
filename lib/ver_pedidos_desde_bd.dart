@@ -1,5 +1,4 @@
 // lib/ver_pedidos_desde_bd.dart
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:postres_app/formato.dart';
 import 'package:postres_app/pedido.dart';
@@ -256,8 +255,8 @@ class _VerPedidosDesdeBDPageState extends State<VerPedidosDesdeBDPage> {
                     ),
                     ElevatedButton(
                       onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Eliminar'),
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                      child: const Text('Eliminar'),
                     ),
                   ],
                 ),

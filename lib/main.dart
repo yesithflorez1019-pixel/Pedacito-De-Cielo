@@ -6,7 +6,6 @@ import 'package:postres_app/util/app_colors.dart';
 import 'package:postres_app/login_page.dart';
 import 'package:postres_app/database.dart';
 import 'package:postres_app/backup_page.dart';
-import 'dart:ui';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:workmanager/workmanager.dart';
@@ -25,7 +24,11 @@ import 'package:postres_app/finanzas/home_finanzas.dart';
 import 'package:postres_app/reportes_page.dart';
 import 'package:postres_app/graficos_page.dart';
 import 'package:postres_app/ajustes_page.dart';
+import 'package:postres_app/clientes_page.dart';
 @pragma('vm:entry-point')
+
+
+
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
@@ -69,6 +72,8 @@ void callbackDispatcher() {
 }
 
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AppDatabase.asegurarTablaClientes();
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -169,10 +174,15 @@ class _HomePageState extends State<HomePage> {
       _MenuOption(icon: Icons.list_alt_outlined, label: 'Tandas y Pedidos', color: const Color(0xFFD4A3C4), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const ControlTandasPage()))),
       _MenuOption(icon: Icons.payment_outlined, label: 'Informe de Deudas', color: const Color(0xFFFFA07A), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const InformeNoPagadosPage()))),
       _MenuOption(icon: Icons.inventory_2_outlined, label: 'Inventario', color: const Color(0xFFA8D1E7), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const InventarioPage()))),
+      _MenuOption(icon: Icons.people_outline, label: 'Clientes', color: const Color(0xFF5A9E8F), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const ClientesPage()))),
       _MenuOption(icon: Icons.attach_money, label: 'Finanzas Personales', color: const Color(0xFFFFBFC5), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const HomeFinanzasPage()))),
+      
       _MenuOption(icon: Icons.bar_chart, label: 'Panel de Reportes', color: const Color(0xFFB0C4DE), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const ReportesPage()))),
+      
       _MenuOption(icon: Icons.analytics_outlined, label: 'Análisis y Gráficos', color: const Color(0xFF9370DB), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const GraficosPage()))),
+      
       _MenuOption(icon: Icons.cloud_upload_outlined, label: 'Copia de Seguridad', color: const Color(0xFF6E7B8B), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const BackupPage()))),
+      
       _MenuOption(icon: Icons.settings_outlined, label: 'Ajustes', color: const Color(0xFF808080), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const AjustesPage()))),
     ];
 

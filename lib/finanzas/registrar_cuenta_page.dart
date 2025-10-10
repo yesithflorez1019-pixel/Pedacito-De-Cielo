@@ -44,7 +44,7 @@ class _RegistrarCuentaPageState extends State<RegistrarCuentaPage> {
     const Color colorTextoOscuro = Color(0xFF333333);
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
 

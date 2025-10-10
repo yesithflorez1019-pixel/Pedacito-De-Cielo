@@ -34,7 +34,7 @@ class _HomeFinanzasPageState extends State<HomeFinanzasPage> {
     final Color colorPrimario = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       body: Stack(
         children: [
 
@@ -178,7 +178,7 @@ class _HomeFinanzasPageState extends State<HomeFinanzasPage> {
                                     ),
                                     const SizedBox(height: 8),
                                     Text(
-                                      '${cuenta.balance.aPesos()}',
+                                      cuenta.balance.aPesos(),
                                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                         color: cuenta.balance > 0 ? Colors.green.shade700 : Colors.red.shade700,
                                         fontWeight: FontWeight.bold,

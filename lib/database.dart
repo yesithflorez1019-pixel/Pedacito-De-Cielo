@@ -9,33 +9,120 @@ import 'tanda.dart';
 import 'insumo.dart';
 import 'finanzas/cuenta.dart';
 import 'finanzas/transaccion.dart';
-
+import 'cliente.dart';
 
 
 class AppDatabase {
+  
 
   static Database? _database;
 
   static Future<Database> _getDatabase() async {
+  if (_database != null && _database!.isOpen) return _database!;
 
-    if (_database != null && _database!.isOpen) return _database!;
+  final dbPath = await getDatabasesPath();
+  final path = join(dbPath, 'postres.db');
 
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'postres.db');
+  _database = await openDatabase(
+    path,
+    version: 6, 
+    onCreate: (db, version) async {
+      await _crearTablas(db);
+    },
+    onUpgrade: (db, oldVersion, newVersion) async {
+      print('Actualizando BD de v$oldVersion a v$newVersion...');
 
+     
+      if (oldVersion < 3) {
+        try {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS clientes(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              nombre TEXT NOT NULL,
+              direccion TEXT,
+              telefono TEXT
+            )
+          ''');
+          await db.execute('ALTER TABLE pedidos ADD COLUMN telefono TEXT');
+          print('Migración a v3 completada ✅');
+        } catch (e) {
+          print('Error en migración a v3: $e');
+        }
+      }
 
-    _database = await openDatabase(
-      path,
-      version: 2,
-      onCreate: (db, version) async {
-        await _crearTablas(db);
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        await _crearTablas(db);
-      },
+     
+      if (oldVersion < 4) {
+        try {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS clientes(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              nombre TEXT NOT NULL,
+              direccion TEXT,
+              telefono TEXT
+            )
+          ''');
+          print('Tabla clientes asegurada ✅');
+        } catch (e) {
+          print('Error creando clientes: $e');
+        }
+      }
+    },
+  );
+
+  
+  try {
+    final res = await _database!.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='clientes';",
     );
-    return _database!;
+
+    if (res.isEmpty) {
+      print('⚠️ Tabla clientes no existe, creando manualmente...');
+      await _database!.execute('''
+        CREATE TABLE IF NOT EXISTS clientes(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nombre TEXT NOT NULL,
+          direccion TEXT,
+          telefono TEXT
+        )
+      ''');
+      print('✅ Tabla clientes creada manualmente');
+    } else {
+      print('✅ Tabla clientes ya existe');
+    }
+  } catch (e) {
+    print('Error verificando/creando tabla clientes: $e');
   }
+
+  return _database!;
+}
+
+  static Future<void> asegurarTablaClientes() async {
+  final db = await _getDatabase(); 
+  try {
+    
+    final tablas = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='clientes';"
+    );
+
+    
+    if (tablas.isEmpty) {
+      print('⚙️ Creando tabla clientes porque no existe...');
+      await db.execute('''
+        CREATE TABLE clientes(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          nombre TEXT NOT NULL,
+          direccion TEXT,
+          telefono TEXT
+        );
+      ''');
+      print('✅ Tabla clientes creada correctamente.');
+    } else {
+      print('✔️ Tabla clientes ya existe.');
+    }
+  } catch (e) {
+    print('❌ Error al verificar/crear tabla clientes: $e');
+  }
+}
 
   static Future<void> closeDatabase() async {
     final db = _database;
@@ -51,6 +138,15 @@ class AppDatabase {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre TEXT NOT NULL,
     balance REAL NOT NULL
+  )
+''');
+
+await db.execute('''
+  CREATE TABLE IF NOT EXISTS clientes(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL,
+    direccion TEXT,
+    telefono TEXT
   )
 ''');
 
@@ -124,6 +220,7 @@ await db.execute('''
         tandaId INTEGER,
         cliente TEXT,
         direccion TEXT,
+        telefono TEXT,
         entregado INTEGER,
         pagado INTEGER,
         pagoParcial REAL,
@@ -209,6 +306,7 @@ static Future<List<Producto>> obtenerProductos({int? tandaId}) async {
       'tandaId': pedido.tandaId,
       'cliente': pedido.cliente,
       'direccion': pedido.direccion,
+      'telefono': pedido.telefono,
       'entregado': pedido.entregado ? 1 : 0,
       'pagado': pedido.pagado ? 1 : 0,
       'pagoParcial': pedido.pagoParcial,
@@ -294,6 +392,7 @@ static Future<void> actualizarPedidoConDetalles(Pedido pedido) async {
         'tandaId': pedido.tandaId,
         'cliente': pedido.cliente,
         'direccion': pedido.direccion,
+        'telefono': pedido.telefono,
         'entregado': pedido.entregado ? 1 : 0,
         'pagado': pedido.pagado ? 1 : 0,
         'pagoParcial': pedido.pagoParcial,
@@ -306,14 +405,13 @@ static Future<void> actualizarPedidoConDetalles(Pedido pedido) async {
 
 static Future<List<Pedido>> obtenerPedidos({int? tandaId}) async {
   final db = await _getDatabase();
-
- 
   final rows = await db.rawQuery('''
     SELECT
       p.id,
       p.tandaId,
       p.cliente,
       p.direccion,
+      p.telefono, 
       p.entregado,
       p.pagado,
       p.pagoParcial,
@@ -341,9 +439,6 @@ static Future<List<Pedido>> obtenerPedidos({int? tandaId}) async {
           producto: Producto.fromMap(prodMap),
           cantidad: (d['cantidad'] as num).toInt(),
         ));
-      } else {
-      
-        print('Aviso: Producto con id ${d['productoId']} no encontrado para el pedido $pedidoId.');
       }
     }
 
@@ -352,18 +447,17 @@ static Future<List<Pedido>> obtenerPedidos({int? tandaId}) async {
       tandaId: (pedidoMap['tandaId'] as int?) ?? 0,
       cliente: pedidoMap['cliente'] as String,
       direccion: pedidoMap['direccion'] as String,
+      telefono: pedidoMap['telefono'] as String?, 
       entregado: ((pedidoMap['entregado'] ?? 0) as int) == 1,
       pagado: ((pedidoMap['pagado'] ?? 0) as int) == 1,
       pagoParcial: (pedidoMap['pagoParcial'] as num?)?.toDouble() ?? 0.0,
       detalles: detalles,
       fecha: DateTime.parse(pedidoMap['fecha'] as String),
-     
       nombreTanda: pedidoMap['nombreTanda'] as String?,
     ));
   }
   return pedidos;
 }
-
 
   static Future<void> insertarPedido(int tandaId, List<DetallePedido> detalles) async {
   final db = await _getDatabase();
@@ -1226,4 +1320,86 @@ static Future<bool> existeTandaConNombre(String nombre) async {
   );
   return resultado.isNotEmpty;
 }
+
+
+
+
+  //v9.5 yrf
+
+
+// ================== CLIENTES ==================
+
+static Future<int> insertarCliente(Cliente cliente) async {
+  final db = await _getDatabase();
+
+
+  final nombreNormalizado = cliente.nombre.toLowerCase().trim();
+  final List<Map<String, dynamic>> clientesExistentes = await db.query(
+    'clientes',
+    where: 'LOWER(TRIM(nombre)) = ?',
+    whereArgs: [nombreNormalizado],
+    limit: 1,
+  );
+
+  if (clientesExistentes.isNotEmpty) {
+
+    final clienteExistente = Cliente.fromMap(clientesExistentes.first);
+    
+
+    final clienteActualizado = Cliente(
+      id: clienteExistente.id,
+      nombre: cliente.nombre, 
+      direccion: cliente.direccion!.isNotEmpty ? cliente.direccion : clienteExistente.direccion,
+      telefono: cliente.telefono!.isNotEmpty ? cliente.telefono : clienteExistente.telefono,
+    );
+
+    await actualizarCliente(clienteActualizado);
+    return clienteExistente.id!;
+  } else {
+
+    return await db.insert('clientes', cliente.toMap());
+  }
+}
+
+static Future<void> actualizarCliente(Cliente cliente) async {
+  final db = await _getDatabase();
+  await db.update(
+    'clientes',
+    cliente.toMap(),
+    where: 'id = ?',
+    whereArgs: [cliente.id],
+  );
+}
+
+static Future<void> eliminarCliente(int id) async {
+  final db = await _getDatabase();
+  await db.delete('clientes', where: 'id = ?', whereArgs: [id]);
+}
+
+static Future<List<Cliente>> obtenerClientes() async {
+  final db = await _getDatabase();
+  final List<Map<String, dynamic>> maps = await db.query('clientes', orderBy: 'nombre ASC');
+  return List.generate(maps.length, (i) {
+    return Cliente.fromMap(maps[i]);
+  });
+}
+
+// Esta función nos ayudará a autocompletar
+static Future<List<Cliente>> buscarClientesPorNombre(String query) async {
+  if (query.isEmpty) return [];
+  final db = await _getDatabase();
+  final List<Map<String, dynamic>> maps = await db.query(
+    'clientes',
+    where: 'nombre LIKE ?',
+    whereArgs: ['%$query%'],
+    limit: 10,
+  );
+  return List.generate(maps.length, (i) {
+    return Cliente.fromMap(maps[i]);
+  });
+}
+
+
+
+
 }

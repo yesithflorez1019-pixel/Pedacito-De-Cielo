@@ -1,12 +1,13 @@
-// lib/registrar_pedido.dart
-import 'dart:ui';
+// lib/registrar_pedido.dart - VERSIÓN FINAL CON AUTOCOMPLETADO NATIVO Y CORRECCIONES
+
 import 'package:flutter/material.dart';
-import 'producto.dart';
-import 'pedido.dart';
-import 'detalle_pedido.dart';
-import 'database.dart';
-import 'formato.dart';
-import 'util/app_colors.dart';
+import 'package:postres_app/cliente.dart';
+import 'package:postres_app/database.dart';
+import 'package:postres_app/detalle_pedido.dart';
+import 'package:postres_app/formato.dart';
+import 'package:postres_app/pedido.dart';
+import 'package:postres_app/producto.dart';
+import 'package:postres_app/util/app_colors.dart';
 import 'package:postres_app/widgets/acrylic_card.dart';
 
 class RegistrarPedidoPage extends StatefulWidget {
@@ -27,6 +28,7 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController clienteController = TextEditingController();
   final TextEditingController direccionController = TextEditingController();
+  final TextEditingController telefonoController = TextEditingController();
   final TextEditingController pagoParcialController = TextEditingController();
   final TextEditingController searchController = TextEditingController();
 
@@ -51,38 +53,20 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   void dispose() {
     clienteController.dispose();
     direccionController.dispose();
+    telefonoController.dispose();
     pagoParcialController.dispose();
     searchController.dispose();
     super.dispose();
   }
 
+  
   Future<void> _loadData() async {
-    final productosDeTanda = await AppDatabase.obtenerProductosDeTanda(widget.tandaId);
-
-    if (mounted) {
-      setState(() {
-        productos = productosDeTanda.map((map) {
-          final productoId = map['productoId'] as int;
-          final stockTotal = map['stock'] as int;
-          _stockDisponible[productoId] = stockTotal;
-          return {
-            'producto': Producto(
-              id: productoId,
-              nombre: map['nombre'] as String,
-              precio: map['precio'] as double,
-            ),
-            'stock': stockTotal,
-          };
-        }).toList();
-        productosFiltrados = List.from(productos);
-        _isLoading = false;
-      });
-    }
-
+   
     if (widget.pedidoEditar != null) {
       final pedido = widget.pedidoEditar!;
       clienteController.text = pedido.cliente;
       direccionController.text = pedido.direccion;
+      telefonoController.text = pedido.telefono ?? ''; 
       pagoParcialController.text = pedido.pagoParcial.toStringAsFixed(0);
       entregado = pedido.entregado;
       pagado = pedido.pagado;
@@ -90,10 +74,35 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
       
       for (var detalle in pedido.detalles) {
         _cantidadesEnPedido[detalle.producto.id!] = detalle.cantidad;
-        _stockDisponible[detalle.producto.id!] = (_stockDisponible[detalle.producto.id!] ?? 0) + detalle.cantidad;
       }
     }
+
+    
+    final productosDeTanda = await AppDatabase.obtenerProductosDeTanda(widget.tandaId);
+
+   
+    if (mounted) {
+      setState(() {
+        productos = productosDeTanda.map((map) {
+          final productoId = map['productoId'] as int;
+          final stockTotal = map['stock'] as int;
+          final stockEnPedido = _cantidadesEnPedido[productoId] ?? 0;
+          _stockDisponible[productoId] = stockTotal + stockEnPedido;
+          return {
+            'producto': Producto(
+              id: productoId,
+              nombre: map['nombre'] as String,
+              precio: map['precio'] as double,
+            ),
+            'stock': stockTotal + stockEnPedido,
+          };
+        }).toList();
+        productosFiltrados = List.from(productos);
+        _isLoading = false;
+      });
+    }
   }
+
 
   void filtrarProductos() {
     final query = searchController.text.toLowerCase();
@@ -108,15 +117,13 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
     setState(() {
       final productoId = producto.id!;
       final cantidadActualEnPedido = _cantidadesEnPedido[productoId] ?? 0;
-      final nuevaCantidadTotalEnPedido = cantidadActualEnPedido + cantidad;
-      
-      final stockInicial = _stockDisponible[productoId] ?? 0;
-      final stockRestante = stockInicial - cantidadActualEnPedido;
+      final stockDisponibleReal = _stockDisponible[productoId] ?? 0;
+      final stockRestante = stockDisponibleReal - cantidadActualEnPedido;
 
       if (cantidad > stockRestante) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('No hay suficiente stock de ${producto.nombre}. Disponibles: $stockRestante'),
+            content: Text('No hay suficiente stock. Disponibles: $stockRestante'),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ),
@@ -124,13 +131,13 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
         return;
       }
       
-      _cantidadesEnPedido[productoId] = nuevaCantidadTotalEnPedido;
+      _cantidadesEnPedido[productoId] = cantidadActualEnPedido + cantidad;
 
       final index = detalles.indexWhere((d) => d.producto.id == productoId);
       if (index != -1) {
-        detalles[index].cantidad = nuevaCantidadTotalEnPedido;
+        detalles[index].cantidad += cantidad;
       } else {
-        detalles.add(DetallePedido(producto: producto, cantidad: nuevaCantidadTotalEnPedido));
+        detalles.add(DetallePedido(producto: producto, cantidad: cantidad));
       }
     });
   }
@@ -148,7 +155,6 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   Future<void> guardarPedido() async {
     if (!_formKey.currentState!.validate()) return;
     if (detalles.isEmpty) {
-
       return;
     }
 
@@ -157,13 +163,13 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
     final pedido = Pedido(
       id: widget.pedidoEditar?.id,
       tandaId: widget.tandaId,
-      cliente: clienteController.text,
-      direccion: direccionController.text,
+      cliente: clienteController.text.trim(),
+      direccion: direccionController.text.trim(),
+      telefono: telefonoController.text.trim(),
       entregado: entregado,
       pagado: pagado,
       pagoParcial: pago,
       detalles: detalles,
-
       fecha: widget.pedidoEditar?.fecha ?? DateTime.now(), 
     );
 
@@ -173,6 +179,15 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
       await AppDatabase.insertarPedidoConDetalles(pedido);
     }
     
+    
+    final clienteAGuardar = Cliente(
+      nombre: clienteController.text.trim(),
+      direccion: direccionController.text.trim(),
+      telefono: telefonoController.text.trim()
+    );
+    await AppDatabase.insertarCliente(clienteAGuardar);
+
+
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -343,27 +358,82 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   
   Widget _buildClienteCard() {
     return AcrylicCard(
-      child:Padding(
+      child: Padding(
         padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          TextFormField(
-            controller: clienteController,
-            decoration: const InputDecoration(labelText: 'Nombre del Cliente', prefixIcon: Icon(Icons.person_outline, color: kColorPrimary)),
-            validator: (v) => v!.isEmpty ? 'Ingresa el nombre del cliente' : null,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: direccionController,
-            decoration: const InputDecoration(labelText: 'Dirección', prefixIcon: Icon(Icons.location_on_outlined, color: kColorPrimary)),
-            validator: (v) => v!.isEmpty ? 'Ingresa la dirección' : null,
-          ),
-        ],
-      ),
+        child: Column(
+          children: [
+            Autocomplete<Cliente>(
+              key: Key(clienteController.text),
+              initialValue: TextEditingValue(text: clienteController.text),
+              displayStringForOption: (option) => option.nombre,
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                if (textEditingValue.text == '') {
+                  return const Iterable<Cliente>.empty();
+                }
+                clienteController.text = textEditingValue.text;
+                return AppDatabase.buscarClientesPorNombre(textEditingValue.text);
+              },
+              onSelected: (Cliente selection) {
+                clienteController.text = selection.nombre;
+                direccionController.text = selection.direccion ?? '';
+                telefonoController.text = selection.telefono ?? '';
+                FocusScope.of(context).unfocus();
+              },
+              fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                return TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre del Cliente',
+                    prefixIcon: Icon(Icons.person_outline, color: kColorPrimary),
+                  ),
+                  validator: (value) => value!.isEmpty ? 'Ingresa el nombre del cliente' : null,
+                );
+              },
+              optionsViewBuilder: (context, onSelected, options) {
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4.0,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        itemCount: options.length,
+                        itemBuilder: (BuildContext context, int index) {
+                          final Cliente option = options.elementAt(index);
+                          return InkWell(
+                            onTap: () => onSelected(option),
+                            child: ListTile(
+                              title: Text(option.nombre),
+                              subtitle: Text(option.telefono ?? 'Sin teléfono'),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: direccionController,
+              decoration: const InputDecoration(labelText: 'Dirección', prefixIcon: Icon(Icons.location_on_outlined, color: kColorPrimary)),
+              validator: (v) => v!.isEmpty ? 'Ingresa la dirección' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: telefonoController,
+              decoration: const InputDecoration(labelText: 'Teléfono (WhatsApp)', prefixIcon: Icon(Icons.phone, color: kColorPrimary)),
+              keyboardType: TextInputType.phone,
+            ),
+          ],
+        ),
       ),
     );
   }
-  
+
   Widget _buildPagoCard() {
     return AcrylicCard(
       child: Padding(
@@ -476,8 +546,6 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
     );
   }
 }
-
-
 
 class _ProductSelectorCard extends StatelessWidget {
   final Producto producto;
