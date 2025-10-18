@@ -70,7 +70,10 @@ class _VerPedidosDesdeBDPageState extends State<VerPedidosDesdeBDPage> {
         ),
       ),
     );
-    cargarPedidos();
+    setState(() {
+    cargarPedidos(); 
+  });
+
   }
   
   Future<void> eliminarPedido(int id) async {

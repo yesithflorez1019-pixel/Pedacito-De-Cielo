@@ -25,6 +25,7 @@ import 'package:postres_app/reportes_page.dart';
 import 'package:postres_app/graficos_page.dart';
 import 'package:postres_app/ajustes_page.dart';
 import 'package:postres_app/clientes_page.dart';
+import 'en_reparto_page.dart';
 @pragma('vm:entry-point')
 
 
@@ -175,6 +176,14 @@ class _HomePageState extends State<HomePage> {
       _MenuOption(icon: Icons.payment_outlined, label: 'Informe de Deudas', color: const Color(0xFFFFA07A), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const InformeNoPagadosPage()))),
       _MenuOption(icon: Icons.inventory_2_outlined, label: 'Inventario', color: const Color(0xFFA8D1E7), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const InventarioPage()))),
       _MenuOption(icon: Icons.people_outline, label: 'Clientes', color: const Color(0xFF5A9E8F), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const ClientesPage()))),
+      _MenuOption(icon: Icons.delivery_dining, label: 'En Reparto', color: const Color(0xFF7D5A50), 
+        onTap: (ctx) async {
+  await Navigator.push(
+    ctx,
+    MaterialPageRoute(builder: (_) => const EnRepartoPage()),
+  );
+},
+      ),
       _MenuOption(icon: Icons.attach_money, label: 'Finanzas Personales', color: const Color(0xFFFFBFC5), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const HomeFinanzasPage()))),
       
       _MenuOption(icon: Icons.bar_chart, label: 'Panel de Reportes', color: const Color(0xFFB0C4DE), onTap: (ctx) => Navigator.push(ctx, MaterialPageRoute(builder: (_) => const ReportesPage()))),
