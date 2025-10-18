@@ -41,6 +41,21 @@ class Pedido {
 
   }) : detalles = detalles ?? [];
 
+  Pedido.empty()
+      : id = -1,
+        tandaId = -1,
+        cliente = '',
+        direccion = '',
+        telefono = '',
+        entregado = false,
+        pagado = false,
+        pagoParcial = 0.0,
+        detalles = [],
+        nombreTanda = '',
+        fecha = DateTime.now(),
+        latitud = null,
+        longitud = null;
+
   double get total => detalles.fold(0.0, (a, d) => a + d.subtotal);
   double get totalPendiente => (total - pagoParcial).clamp(0, total);
   String get totalFormateado => total.aPesos();

@@ -35,6 +35,7 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   List<Map<String, dynamic>> productos = [];
   List<Map<String, dynamic>> productosFiltrados = [];
   List<DetallePedido> detalles = [];
+  List<Cliente> _todosLosClientes = [];
   bool entregado = false;
   bool pagado = false;
 
@@ -48,7 +49,7 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
     searchController.addListener(filtrarProductos);
     _loadData();
     pagoParcialController.addListener(() => setState(() {}));
-
+    _cargarClientes();
   }
   
   @override
@@ -61,7 +62,14 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
     super.dispose();
   }
 
-  
+  Future<void> _cargarClientes() async {
+  final clientes = await AppDatabase.obtenerClientes();
+  if (mounted) {
+    setState(() {
+      _todosLosClientes = clientes;
+    });
+  }
+}
   Future<void> _loadData() async {
    
     if (widget.pedidoEditar != null) {
@@ -417,82 +425,100 @@ void _mostrarDialogoSumarAbono() {
   }
   
   Widget _buildClienteCard() {
-    return AcrylicCard(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Autocomplete<Cliente>(
-              key: Key(clienteController.text),
-              initialValue: TextEditingValue(text: clienteController.text),
-              displayStringForOption: (option) => option.nombre,
-              optionsBuilder: (TextEditingValue textEditingValue) {
-                if (textEditingValue.text == '') {
-                  return const Iterable<Cliente>.empty();
-                }
-                clienteController.text = textEditingValue.text;
-                return AppDatabase.buscarClientesPorNombre(textEditingValue.text);
-              },
-              onSelected: (Cliente selection) {
-                clienteController.text = selection.nombre;
-                direccionController.text = selection.direccion ?? '';
-                telefonoController.text = selection.telefono ?? '';
-                FocusScope.of(context).unfocus();
-              },
-              fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-                return TextFormField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre del Cliente',
-                    prefixIcon: Icon(Icons.person_outline, color: kColorPrimary),
-                  ),
-                  validator: (value) => value!.isEmpty ? 'Ingresa el nombre del cliente' : null,
-                );
-              },
-              optionsViewBuilder: (context, onSelected, options) {
-                return Align(
-                  alignment: Alignment.topLeft,
-                  child: Material(
-                    elevation: 4.0,
+  return AcrylicCard(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Autocomplete<Cliente>(
+            initialValue: TextEditingValue(text: clienteController.text),
+            displayStringForOption: (cliente) => cliente.nombre,
+
+            // Lógica para buscar en la lista que ya cargamos en memoria
+            optionsBuilder: (TextEditingValue textEditingValue) {
+              if (textEditingValue.text.isEmpty) {
+                return const Iterable<Cliente>.empty();
+              }
+              return _todosLosClientes.where((cliente) {
+                return cliente.nombre.toLowerCase().contains(textEditingValue.text.toLowerCase());
+              });
+            },
+
+            // Cuando se selecciona un cliente, autocompleta los otros campos
+            onSelected: (Cliente seleccion) {
+              setState(() {
+                clienteController.text = seleccion.nombre;
+                direccionController.text = seleccion.direccion ?? '';
+                telefonoController.text = seleccion.telefono ?? '';
+              });
+              FocusScope.of(context).unfocus();
+            },
+
+            // Construye el campo de texto que el usuario ve
+            fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+              // Asignamos el controlador del Autocomplete a nuestro controlador principal
+              // Esto es importante para que al seleccionar, el texto se mantenga.
+              clienteController.text = controller.text;
+              return TextFormField(
+                controller: controller, // Usa el controlador interno del Autocomplete
+                focusNode: focusNode,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre del Cliente',
+                  prefixIcon: Icon(Icons.person_outline, color: kColorPrimary),
+                ),
+                validator: (value) => value!.isEmpty ? 'Ingresa el nombre del cliente' : null,
+              );
+            },
+
+            // --- ✨ ¡AQUÍ ESTÁ EL NUEVO DISEÑO! ✨ ---
+            optionsViewBuilder: (context, onSelected, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  // El Material es necesario para que se dibuje sobre otras cosas,
+                  // pero lo hacemos transparente.
+                  color: Colors.transparent,
+                  elevation: 4.0,
+                  child: AcrylicCard( // ¡Usamos tu AcrylicCard como el contenedor!
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 200),
+                      constraints: const BoxConstraints(maxHeight: 200), // Límite de altura
                       child: ListView.builder(
                         padding: EdgeInsets.zero,
                         itemCount: options.length,
                         itemBuilder: (BuildContext context, int index) {
-                          final Cliente option = options.elementAt(index);
+                          final cliente = options.elementAt(index);
                           return InkWell(
-                            onTap: () => onSelected(option),
+                            onTap: () => onSelected(cliente),
                             child: ListTile(
-                              title: Text(option.nombre),
-                              subtitle: Text(option.telefono ?? 'Sin teléfono'),
+                              title: Text(cliente.nombre, style: const TextStyle(color: kColorTextDark)),
+                              subtitle: Text(cliente.telefono ?? 'Sin teléfono', style: TextStyle(color: kColorTextDark.withOpacity(0.7))),
                             ),
                           );
                         },
                       ),
                     ),
                   ),
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: direccionController,
-              decoration: const InputDecoration(labelText: 'Dirección', prefixIcon: Icon(Icons.location_on_outlined, color: kColorPrimary)),
-              validator: (v) => v!.isEmpty ? 'Ingresa la dirección' : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: telefonoController,
-              decoration: const InputDecoration(labelText: 'Teléfono (WhatsApp)', prefixIcon: Icon(Icons.phone, color: kColorPrimary)),
-              keyboardType: TextInputType.phone,
-            ),
-          ],
-        ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: direccionController,
+            decoration: const InputDecoration(labelText: 'Dirección', prefixIcon: Icon(Icons.location_on_outlined, color: kColorPrimary)),
+            validator: (v) => v!.isEmpty ? 'Ingresa la dirección' : null,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: telefonoController,
+            decoration: const InputDecoration(labelText: 'Teléfono (WhatsApp)', prefixIcon: Icon(Icons.phone, color: kColorPrimary)),
+            keyboardType: TextInputType.phone,
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildPagoCard() {
   // --- ✅ Lógica de cálculo en tiempo real ---
