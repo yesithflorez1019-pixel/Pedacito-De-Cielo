@@ -6,7 +6,9 @@ import 'producto.dart';
 import 'registrar_pedido.dart';
 import 'util/app_colors.dart';
 import 'widgets/acrylic_card.dart';
-
+import 'package:url_launcher/url_launcher.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum DeudorSortOrder { porDeuda, porAntiguedad }
 
@@ -18,16 +20,9 @@ class InformeNoPagadosPage extends StatefulWidget {
 }
 
 class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
-
-
-
-
-
   List<Map<String, dynamic>> _clientesCompletos = [];
   List<Map<String, dynamic>> _clientesFiltrados = [];
   double _deudaTotalGeneral = 0.0;
-
- 
   final _searchController = TextEditingController();
   DeudorSortOrder _sortOrder = DeudorSortOrder.porDeuda;
   Producto? _productoSeleccionado;
@@ -36,6 +31,7 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
   List<Producto> _listaDeProductos = [];
   bool _isLoading = true;
 
+String _mensajePlantilla = "¡Hola [CLIENTE]! 😊 Te escribo de parte de Pedacito de Cielo para recordarte amablemente sobre tu saldo pendiente total de [DEUDA]. ¡Que tengas un lindo día! 🍰";
   final formatoPesos = NumberFormat.currency(
     locale: 'es_CO',
     symbol: '\$',
@@ -58,7 +54,69 @@ class _InformeNoPagadosPageState extends State<InformeNoPagadosPage> {
     super.dispose();
   }
 
- 
+  Future<void> _mostrarDialogoEditarMensaje() async {
+    final controller = TextEditingController(text: _mensajePlantilla);
+    final resultado = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Editar Plantilla de Cobro'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: controller,
+              maxLines: 5,
+              autofocus: true,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 16),
+            const Text('Usa las "variables mágicas":'),
+            Text('[CLIENTE]', style: TextStyle(color: kColorPrimary, fontWeight: FontWeight.bold)),
+            Text('[DEUDA]', style: TextStyle(color: kColorPrimary, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.of(context).pop(controller.text), child: const Text('Guardar')),
+        ],
+      ),
+    );
+
+    if (resultado != null && resultado.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('mensaje_cobro_whatsapp', resultado);
+      setState(() {
+        _mensajePlantilla = resultado;
+      });
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('¡Plantilla guardada!')));
+    }
+  }
+
+
+Future<void> _enviarMensajeWhatsApp(Map<String, dynamic> clienteData) async {
+    final nombreCliente = clienteData['cliente'] as String;
+    final deuda = clienteData['deuda'] as double;
+    final pedidos = clienteData['pedidos'] as List<Pedido>;
+    final telefono = pedidos.firstWhere((p) => p.telefono?.isNotEmpty ?? false, orElse: () => Pedido.empty()).telefono;
+
+    if (telefono == null || telefono.isEmpty) {
+      // ... (manejo de error si no hay teléfono)
+      return;
+    }
+
+    // Reemplazamos las "variables mágicas" por los datos reales
+    final String mensajeFinal = _mensajePlantilla
+        .replaceAll('[CLIENTE]', nombreCliente)
+        .replaceAll('[DEUDA]', formatoPesos.format(deuda));
+
+    final url = "https://wa.me/57$telefono?text=${Uri.encodeComponent(mensajeFinal)}";
+
+    if (!await launchUrl(Uri.parse(url))) {
+      // ... (manejo de error si no se puede abrir WhatsApp)
+    }
+  }
+
   Future<void> _cargarDatosIniciales() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
@@ -288,6 +346,11 @@ Future<void> _liquidarCliente(String cliente) async {
                   ),
                 ),
                 IconButton(
+                  icon: const Icon(Icons.edit_note, color: Colors.white),
+                  tooltip: 'Editar plantilla de mensaje',
+                  onPressed: _mostrarDialogoEditarMensaje,
+                ),
+                IconButton(
                   icon: const Icon(Icons.refresh, color: Colors.white),
                   onPressed: _cargarDatosIniciales,
                 ),
@@ -506,37 +569,49 @@ Future<void> _liquidarCliente(String cliente) async {
   }
 
   Widget _buildClienteCard(Map<String, dynamic> clienteData) {
-    final cliente = clienteData['cliente'] as String;
-    final deuda = clienteData['deuda'] as double;
-    final pedidos = clienteData['pedidos'] as List<Pedido>;
+  final cliente = clienteData['cliente'] as String;
+  final deuda = clienteData['deuda'] as double;
+  final pedidos = clienteData['pedidos'] as List<Pedido>;
+  final tieneTelefono = pedidos.any((p) => p.telefono?.isNotEmpty ?? false);
 
-    return AcrylicCard(
-      child: ExpansionTile(
-        leading: CircleAvatar(
-          backgroundColor: kColorPrimary.withOpacity(0.1),
-          child: Text(
-            cliente.substring(0, 1).toUpperCase(),
-            style: const TextStyle(color: kColorPrimary, fontWeight: FontWeight.bold),
-          ),
+  return AcrylicCard(
+    child: ExpansionTile(
+      leading: CircleAvatar(
+        backgroundColor: kColorPrimary.withOpacity(0.1),
+        child: Text(
+          cliente.substring(0, 1).toUpperCase(),
+          style: const TextStyle(color: kColorPrimary, fontWeight: FontWeight.bold),
         ),
-        title: Text(cliente, style: const TextStyle(color: kColorTextDark, fontSize: 18, fontWeight: FontWeight.bold)),
-        subtitle: Text("Deuda total: ${formatoPesos.format(deuda)}",
-            style: const TextStyle(color: Colors.redAccent)),
-        children: [
-          ...pedidos.map((pedido) => _buildPedidoItem(pedido)),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.check_circle_outline, size: 18),
-              label: const Text("Liquidar Deuda del Cliente"),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
-              onPressed: () => _liquidarCliente(cliente),
-            ),
-          )
-        ],
       ),
-    );
-  }
+      title: Text(cliente, style: const TextStyle(color: kColorTextDark, fontSize: 18, fontWeight: FontWeight.bold)),
+      subtitle: Text("Deuda total: ${formatoPesos.format(deuda)}",
+          style: const TextStyle(color: Colors.redAccent)),
+      
+      // --- ✅ ¡LA CORRECCIÓN ESTÁ AQUÍ! ---
+      // Ahora el botón llama a la función correcta con los datos correctos.
+      trailing: tieneTelefono
+          ? IconButton(
+              icon: const FaIcon(FontAwesomeIcons.whatsapp, color: Colors.green),
+              tooltip: 'Cobrar por WhatsApp',
+              onPressed: () => _enviarMensajeWhatsApp(clienteData),
+            )
+          : null, // Si no hay teléfono, no se muestra el botón
+
+      children: [
+        ...pedidos.map((pedido) => _buildPedidoItem(pedido)),
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.check_circle_outline, size: 18),
+            label: const Text("Liquidar Deuda del Cliente"),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+            onPressed: () => _liquidarCliente(cliente),
+          ),
+        )
+      ],
+    ),
+  );
+}
 
   Widget _buildPedidoItem(Pedido pedido) {
     final fechaFormateada = DateFormat('dd MMM yyyy, hh:mm a', 'es_CO').format(pedido.fecha);
