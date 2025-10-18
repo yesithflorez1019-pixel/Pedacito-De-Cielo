@@ -47,8 +47,10 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
     super.initState();
     searchController.addListener(filtrarProductos);
     _loadData();
-  }
+    pagoParcialController.addListener(() => setState(() {}));
 
+  }
+  
   @override
   void dispose() {
     clienteController.dispose();
@@ -103,6 +105,64 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
     }
   }
 
+void _mostrarDialogoSumarAbono() {
+  final abonoAdicionalController = TextEditingController();
+  String? errorText; 
+
+
+  showDialog(
+    context: context,
+    builder: (context) {
+      return StatefulBuilder( 
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Text('Sumar al Abono'),
+            content: TextFormField(
+              controller: abonoAdicionalController,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Monto a agregar',
+                prefixIcon: const Icon(Icons.add_shopping_cart, color: kColorPrimary),
+
+                errorText: errorText, 
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final abonoActual = double.tryParse(pagoParcialController.text) ?? 0.0;
+                  final abonoAdicional = double.tryParse(abonoAdicionalController.text) ?? 0.0;
+                  
+
+                  if (abonoActual + abonoAdicional > totalPedido) {
+                    setStateDialog(() { 
+                      errorText = 'El abono supera el total del pedido.';
+                    });
+                  } else {
+
+                    final nuevoTotal = abonoActual + abonoAdicional;
+                    setState(() { 
+                      pagoParcialController.text = nuevoTotal.toStringAsFixed(0);
+                    });
+                    Navigator.of(context).pop();
+                  }
+                },
+                child: const Text('Agregar'),
+              ),
+            ],
+          );
+        },
+      );
+    },
+  );
+}
 
   void filtrarProductos() {
     final query = searchController.text.toLowerCase();
@@ -435,23 +495,61 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
   }
 
   Widget _buildPagoCard() {
-    return AcrylicCard(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+  // --- ✅ Lógica de cálculo en tiempo real ---
+  final abono = double.tryParse(pagoParcialController.text) ?? 0.0;
+  final faltante = (totalPedido - abono).clamp(0, totalPedido); // clamp() evita negativos
+
+  return AcrylicCard(
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         children: [
+          // --- El nuevo campo "Faltante" ---
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: TextFormField(
-              controller: pagoParcialController,
-              keyboardType: TextInputType.number,
-              enabled: !pagado,
-              decoration: const InputDecoration(
-                labelText: 'Abono Parcial',
-                prefixIcon: Icon(Icons.attach_money_outlined, color: kColorPrimary),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: ListTile(
+              title: const Text('Faltante por Pagar:', style: TextStyle(color: kColorTextDark)),
+              trailing: Text(
+                faltante.aPesos(), // Usamos tu formateador de moneda
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: kColorPrimary,
+                ),
               ),
             ),
           ),
+          
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: pagoParcialController,
+                    keyboardType: TextInputType.number,
+                    enabled: !pagado,
+                    decoration: const InputDecoration(
+                      labelText: 'Abono Parcial',
+                      prefixIcon: Icon(Icons.attach_money_outlined, color: kColorPrimary),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                  onPressed: _mostrarDialogoSumarAbono,
+                  style: ElevatedButton.styleFrom(
+                    shape: const CircleBorder(),
+                    padding: const EdgeInsets.all(12),
+                    backgroundColor: kColorPrimary,
+                  ),
+                  child: const Icon(Icons.add, color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
           SwitchListTile(
             title: const Text('Pagado Completamente', style: TextStyle(color: kColorTextDark)),
             value: pagado,
@@ -471,9 +569,9 @@ class _RegistrarPedidoPageState extends State<RegistrarPedidoPage> {
           ),
         ],
       ),
-      ),
-    );
-  }
+    ),
+  );
+}
   
   Widget _buildAddProductsSection() {
     return Column(

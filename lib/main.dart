@@ -240,7 +240,7 @@ class _HomePageState extends State<HomePage> {
                                 style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
                               ),
                                const Text(
-                                'Recuerda siempre sonreir, a tu novio le encanta verde sonreir.💙',
+                                'Recuerda siempre sonreir, a tu novio le encanta verte sonreir.💙',
                                 style: TextStyle(fontSize: 16, color: Colors.white70),
                               ),
                             ],
