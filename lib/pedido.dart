@@ -1,8 +1,8 @@
-// lib/pedido.dart - VERSIÓN FINAL CORREGIDA
+
 
 import 'detalle_pedido.dart';
 import 'formato.dart';
-import 'producto.dart'; // Asegúrate de que esta importación exista si no está
+import 'producto.dart';
 
 class Pedido {
   final int? id;
@@ -15,7 +15,12 @@ class Pedido {
   final double pagoParcial;
   final List<DetallePedido> detalles;
   final String? nombreTanda;
-  final DateTime fecha; 
+  final DateTime fecha;
+  
+
+  final double? latitud;
+  final double? longitud;
+
 
   Pedido({
     this.id,
@@ -28,7 +33,12 @@ class Pedido {
     this.pagoParcial = 0.0,
     List<DetallePedido>? detalles,
     this.nombreTanda,
-    required this.fecha, 
+    required this.fecha,
+    
+
+    this.latitud,
+    this.longitud,
+
   }) : detalles = detalles ?? [];
 
   double get total => detalles.fold(0.0, (a, d) => a + d.subtotal);
@@ -43,15 +53,17 @@ class Pedido {
       'tandaId': tandaId,
       'cliente': cliente,
       'direccion': direccion,
-      'telefono': telefono, // <-- CORREGIDO
+      'telefono': telefono,
       'entregado': entregado,
       'pagado': pagado,
       'pagoParcial': pagoParcial,
       'detalles': detalles.map((d) => d.toMap()).toList(),
       'nombreTanda': nombreTanda,
-      'fecha': fecha.toIso8601String(), 
+      'fecha': fecha.toIso8601String(),
+
     };
   }
+
 
   factory Pedido.fromMap(Map<String, dynamic> map, List<Producto> todosLosProductos) {
     return Pedido(
@@ -59,7 +71,7 @@ class Pedido {
       tandaId: map['tandaId'] as int,
       cliente: map['cliente'] as String,
       direccion: map['direccion'] as String,
-      telefono: map['telefono'] as String?, // <-- CORREGIDO
+      telefono: map['telefono'] as String?,
       entregado: map['entregado'] == 1,
       pagado: map['pagado'] == 1,
       pagoParcial: (map['pagoParcial'] as num).toDouble(),
@@ -67,7 +79,11 @@ class Pedido {
           ?.map((item) => DetallePedido.fromMap(item as Map<String, dynamic>, todosLosProductos))
           .toList() ?? [],
       nombreTanda: map['nombreTanda'] as String?,
-      fecha: DateTime.parse(map['fecha'] as String), 
+      fecha: DateTime.parse(map['fecha'] as String),
+
+      latitud: (map['latitud'] as num?)?.toDouble(),
+      longitud: (map['longitud'] as num?)?.toDouble(),
+
     );
   }
 
@@ -76,26 +92,34 @@ class Pedido {
     int? tandaId,
     String? cliente,
     String? direccion,
-    String? telefono, // <-- CORREGIDO
+    String? telefono,
     bool? entregado,
     bool? pagado,
     double? pagoParcial,
     List<DetallePedido>? detalles,
     String? nombreTanda,
     DateTime? fecha,
+
+    double? latitud,
+    double? longitud,
+
   }) {
     return Pedido(
       id: id ?? this.id,
       tandaId: tandaId ?? this.tandaId,
       cliente: cliente ?? this.cliente,
       direccion: direccion ?? this.direccion,
-      telefono: telefono ?? this.telefono, // <-- CORREGIDO
+      telefono: telefono ?? this.telefono,
       entregado: entregado ?? this.entregado,
       pagado: pagado ?? this.pagado,
       pagoParcial: pagoParcial ?? this.pagoParcial,
       detalles: detalles ?? this.detalles,
       nombreTanda: nombreTanda ?? this.nombreTanda,
-      fecha: fecha ?? this.fecha, 
+      fecha: fecha ?? this.fecha,
+
+      latitud: latitud ?? this.latitud,
+      longitud: longitud ?? this.longitud,
+
     );
   }
 }

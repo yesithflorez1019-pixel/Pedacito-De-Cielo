@@ -25,7 +25,7 @@ class AppDatabase {
 
   _database = await openDatabase(
     path,
-    version: 6, 
+    version: 7, 
     onCreate: (db, version) async {
       await _crearTablas(db);
     },
@@ -64,6 +64,16 @@ class AppDatabase {
           print('Tabla clientes asegurada ✅');
         } catch (e) {
           print('Error creando clientes: $e');
+        }
+      }
+
+      if (oldVersion < 7) {
+        try {
+          await db.execute('ALTER TABLE pedidos ADD COLUMN latitud REAL');
+          await db.execute('ALTER TABLE pedidos ADD COLUMN longitud REAL');
+          print('Migración a v7 completada: Añadidas columnas de geolocalización a pedidos ✅');
+        } catch (e) {
+          print('Error en migración a v7: $e');
         }
       }
     },
@@ -385,7 +395,10 @@ static Future<void> actualizarPedidoConDetalles(Pedido pedido) async {
         'cantidad': cantidad,
       });
     }
-
+    print('--- 🕵️‍♂️ PISTA 1: Actualizando Pedido en BD ---');
+    print('ID del Pedido: ${pedido.id}');
+    print('Nueva Dirección a Guardar: "${pedido.direccion}"');
+    print('-----------------------------------------');
     await txn.update(
       'pedidos',
       {
@@ -396,10 +409,14 @@ static Future<void> actualizarPedidoConDetalles(Pedido pedido) async {
         'entregado': pedido.entregado ? 1 : 0,
         'pagado': pedido.pagado ? 1 : 0,
         'pagoParcial': pedido.pagoParcial,
+        'latitud': null,
+        'longitud': null,
       },
       where: 'id = ?',
       whereArgs: [pedido.id!],
     );
+
+    
   });
 }
 
@@ -1384,7 +1401,7 @@ static Future<List<Cliente>> obtenerClientes() async {
   });
 }
 
-// Esta función nos ayudará a autocompletar
+
 static Future<List<Cliente>> buscarClientesPorNombre(String query) async {
   if (query.isEmpty) return [];
   final db = await _getDatabase();
@@ -1399,7 +1416,118 @@ static Future<List<Cliente>> buscarClientesPorNombre(String query) async {
   });
 }
 
+static Future<List<Pedido>> obtenerPedidosNoEntregados() async {
+  final db = await _getDatabase();
+  final rows = await db.rawQuery('''
+    SELECT
+      p.id,
+      p.tandaId,
+      p.cliente,
+      p.direccion,
+      p.telefono, 
+      p.entregado,
+      p.pagado,
+      p.pagoParcial,
+      p.fecha,
+      t.nombre as nombreTanda,
+      
+      -- 1. AÑADIMOS LAS NUEVAS COLUMNAS A LA CONSULTA --
+      p.latitud,
+      p.longitud
+      -- ---------------------------------------------
+      
+    FROM pedidos p
+    LEFT JOIN tandas t ON p.tandaId = t.id
+    WHERE p.entregado = 0
+    ORDER BY p.id DESC
+  ''');
+
+  List<Pedido> pedidos = [];
+  for (final pedidoMap in rows) {
+    final pedidoId = pedidoMap['id'] as int;
+    final detallesMap =
+        await db.query('detalles_pedido', where: 'pedidoId = ?', whereArgs: [pedidoId]);
+
+    final detalles = <DetallePedido>[];
+    for (final d in detallesMap) {
+      final prodResult = await db.query('productos', where: 'id = ?', whereArgs: [d['productoId']]);
+      
+      if (prodResult.isNotEmpty) {
+        final prodMap = prodResult.first;
+        detalles.add(DetallePedido(
+          producto: Producto.fromMap(prodMap),
+          cantidad: (d['cantidad'] as num).toInt(),
+        ));
+      }
+    }
+
+    pedidos.add(Pedido(
+      id: pedidoId,
+      tandaId: (pedidoMap['tandaId'] as int?) ?? 0,
+      cliente: pedidoMap['cliente'] as String,
+      direccion: pedidoMap['direccion'] as String,
+      telefono: pedidoMap['telefono'] as String?, 
+      entregado: ((pedidoMap['entregado'] ?? 0) as int) == 1,
+      pagado: ((pedidoMap['pagado'] ?? 0) as int) == 1,
+      pagoParcial: (pedidoMap['pagoParcial'] as num?)?.toDouble() ?? 0.0,
+      detalles: detalles,
+      fecha: DateTime.parse(pedidoMap['fecha'] as String),
+      nombreTanda: pedidoMap['nombreTanda'] as String?,
+
+
+      latitud: pedidoMap['latitud'] as double?,
+      longitud: pedidoMap['longitud'] as double?,
+
+    ));
+  }
+  return pedidos; 
+}
 
 
 
+static Future<void> actualizarEstadoPedido(int id, {bool? entregado, bool? pagado}) async {
+    final db = await _getDatabase();
+    final data = <String, dynamic>{};
+    if (entregado != null) data['entregado'] = entregado ? 1 : 0;
+    if (pagado != null) {
+      data['pagado'] = pagado ? 1 : 0;
+      if (pagado) {
+        
+        final detalles = await db.query('detalles_pedido', where: 'pedidoId = ?', whereArgs: [id]);
+        double totalDelPedido = 0.0;
+        for (final d in detalles) {
+          final productoId = d['productoId'] as int;
+          final cantidad = d['cantidad'] as int;
+          final productoData = await db.query('productos', where: 'id = ?', whereArgs: [productoId]);
+          if (productoData.isNotEmpty) {
+            final precio = (productoData.first['precio'] as num).toDouble();
+            totalDelPedido += precio * cantidad;
+          }
+        }
+        data['pagoParcial'] = totalDelPedido;
+      }
+    }
+
+    if (data.isNotEmpty) {
+      await db.update('pedidos', data, where: 'id = ?', whereArgs: [id]);
+    }
+  }
+
+  // apartado en reparto//
+    static Future<void> guardarCoordenadasPedido(int pedidoId, double lat, double lng) async {
+      final db = await _getDatabase();
+      await db.update(
+        'pedidos',
+        {'latitud': lat, 'longitud': lng},
+        where: 'id = ?',
+        whereArgs: [pedidoId],
+      );
+    }
+static Future<void> borrarTodosLosPedidosParaPrueba() async {
+  print("--- ☢️ OPCIÓN NUCLEAR ACTIVADA ☢️ ---");
+  final db = await _getDatabase();
+  await db.delete('pedidos');
+  await db.delete('detalles_pedido');
+  print("--- ✅ Todos los pedidos han sido eliminados. ---");
+}
 }
