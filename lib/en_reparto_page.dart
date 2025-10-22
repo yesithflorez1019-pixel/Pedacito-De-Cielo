@@ -116,29 +116,31 @@ class _EnRepartoPageState extends State<EnRepartoPage> with WidgetsBindingObserv
     const String apiKey = "AIzaSyAKlgCQN5xuWHmmd931c3tzw6XYmwZz5to"; // Tu Clave de API
 
     for (var pedido in pedidos) {
-      double? lat;
-      double? lng;
-      try {
-        final query = Uri.encodeComponent('${pedido.direccion}, Barrancabermeja, Santander, Colombia');
-        final url = Uri.parse('https://maps.googleapis.com/maps/api/geocode/json?address=$query&key=$apiKey');
-        final response = await http.get(url);
-        if (response.statusCode == 200) {
-          final results = json.decode(response.body);
-          if (results['status'] == 'OK' && results['results'].isNotEmpty) {
-            final location = results['results'][0]['geometry']['location'];
-            lat = location['lat'];
-            lng = location['lng'];
+      double? lat = pedido.latitud;
+      double? lng = pedido.longitud;
 
-            // --- ✅ CORRECCIÓN AQUÍ ---
-            // Solo intentamos guardar si lat y lng tienen un valor.
-            if (lat != null && lng != null) {
-              await AppDatabase.guardarCoordenadasPedido(pedido.id!, lat, lng);
+      if (lat == null || lng == null) {
+        print("🕵️‍♂️ No encontré coordenadas para '${pedido.direccion}'. ¡Preguntando a Google!");
+        try {
+          final query = Uri.encodeComponent('${pedido.direccion}, Barrancabermeja, Santander, Colombia');
+          final url = Uri.parse('https://maps.googleapis.com/maps/api/geocode/json?address=$query&key=$apiKey');
+          final response = await http.get(url);
+          if (response.statusCode == 200) {
+            final results = json.decode(response.body);
+            if (results['status'] == 'OK' && results['results'].isNotEmpty) {
+              final location = results['results'][0]['geometry']['location'];
+              lat = location['lat'];
+              lng = location['lng'];
+              if (lat != null && lng != null) {
+                await AppDatabase.guardarCoordenadasPedido(pedido.id!, lat, lng);
+              }
             }
           }
+        } catch (e) {
+          print("Error de geocodificación: $e");
         }
-      } catch (e) {
-        print("Error de geocodificación: $e");
       }
+      
       if (lat != null && lng != null) {
         final distancia = Geolocator.distanceBetween(_currentPosition!.latitude, _currentPosition!.longitude, lat, lng);
         _distancias[pedido.id!] = distancia;
@@ -228,7 +230,7 @@ class _EnRepartoPageState extends State<EnRepartoPage> with WidgetsBindingObserv
         padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 8.0),
         child: Row(
           children: [
-            IconButton(icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20), onPressed: () => Navigator.of(context).pop()),
+            const SizedBox(width: 48),
             const Expanded(child: Text('Pedidos en Reparto', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
             IconButton(
               icon: const Icon(Icons.map_outlined, color: Colors.white),
