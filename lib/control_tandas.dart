@@ -127,10 +127,7 @@ class _ControlTandasPageState extends State<ControlTandasPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Row(
                       children: [
-                         IconButton(
-                          icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 20),
-                          onPressed: () => Navigator.of(context).pop(),
-                        ),
+                         const SizedBox(width: 48),
                         const Expanded(
                           child: Text(
                             'Tandas y Pedidos',

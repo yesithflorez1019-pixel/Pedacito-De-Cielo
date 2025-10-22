@@ -1523,11 +1523,45 @@ static Future<void> actualizarEstadoPedido(int id, {bool? entregado, bool? pagad
         whereArgs: [pedidoId],
       );
     }
-static Future<void> borrarTodosLosPedidosParaPrueba() async {
-  print("--- ☢️ OPCIÓN NUCLEAR ACTIVADA ☢️ ---");
-  final db = await _getDatabase();
-  await db.delete('pedidos');
-  await db.delete('detalles_pedido');
-  print("--- ✅ Todos los pedidos han sido eliminados. ---");
-}
+
+  static Future<double> obtenerIngresosSemana() async {
+    final db = await _getDatabase();
+    final hoy = DateTime.now();
+    final haceUnaSemana = hoy.subtract(const Duration(days: 7));
+    
+    final resultado = await db.rawQuery('''
+      SELECT SUM(pagoParcial) as total
+      FROM pedidos
+      WHERE pagado = 1 AND date(fecha) >= date(?)
+    ''', [haceUnaSemana.toIso8601String()]);
+
+    // Usamos 'as num?' para más seguridad y luego lo convertimos a double.
+    return (resultado.first['total'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  static Future<Map<String, dynamic>?> obtenerProductoEstrellaMes() async {
+    final db = await _getDatabase();
+    final hoy = DateTime.now();
+    final primerDiaDelMes = DateTime(hoy.year, hoy.month, 1).toIso8601String();
+
+    final resultado = await db.rawQuery('''
+      SELECT p.nombre, SUM(dp.cantidad) as totalVendido
+      FROM detalles_pedido dp
+      JOIN productos p ON p.id = dp.productoId
+      JOIN pedidos ped ON ped.id = dp.pedidoId
+      WHERE date(ped.fecha) >= date(?)
+      GROUP BY p.nombre
+      ORDER BY totalVendido DESC
+      LIMIT 1
+    ''', [primerDiaDelMes]);
+
+    if (resultado.isNotEmpty) {
+      return {
+        'nombre': resultado.first['nombre'] as String,
+        'cantidad': (resultado.first['totalVendido'] as num).toInt(),
+      };
+    }
+    return null;
+  }
+
 }
